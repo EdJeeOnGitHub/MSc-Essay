@@ -1,0 +1,209 @@
+---
+title: "SimStudy"
+author: "Ed Jee"
+date: "29 December 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(broom)
+library(modelr)
+library(purrr)
+library(tidyr)
+```
+
+
+
+
+## Using SimStudy
+
+Replicating this blog post for (now)[https://www.rdatagen.net/post/generating-data-to-explore-the-myriad-causal-effects/]
+
+```{r}
+fYt <- function(x, max, grad, inflect = 0, offset = 0) {
+  ( max / (1 + exp( -grad * (x - inflect) ) ) ) + offset
+}
+
+ggplot(data = data.frame(x = 0), mapping = aes(x = x)) +
+  xlim(-1.5, 1.5) +
+  stat_function(fun = fYt, size = 2,
+                args = list(max = 2.5, grad = 8, inflect = 0.0)) +
+  stat_function(fun = fYt, size = 2,
+                args = list(max = 5, grad = 15, inflect = 0.02))
+```
+
+
+## Homogeneous
+
+```{r}
+library(simstudy)
+
+### Potential treatments U and outcomes Y
+
+def <- defData(varname = "U", formula = "-0.5;0.5", 
+               dist = "uniform")
+def <- defData(def, varname = "T0", 
+               formula = "-2 + 4 * U",
+               dist = "binary", link = "logit")
+def <- defData(def, varname = "T1x", 
+               formula = "4 * U ",
+               dist = "binary", link = "logit")
+
+# This prevents any deniers:
+
+def <- defData(def, varname = "T1",
+               formula = "(T0 == 0) * T1x + (T0 == 1) * 1",
+               dist = "nonrandom")
+
+def <- defData(def, varname = "Y0", 
+               formula = "fYt(U, 5, 15, 0.02)",
+               variance = 0.25)
+def <- defData(def, varname = "Y1", 
+               formula = "fYt(U, 5.0, 15, 0.02, 1)",
+               variance = 0.25)
+
+### Observed treatments
+
+defA <- defDataAdd(varname = "T",
+                   formula = "(A == 0) * T0 + (A == 1) * T1")
+defA <- defDataAdd(defA, varname = "Y", 
+                   formula = "(T == 0) * Y0 + (T == 1) * Y1",
+                   dist = "nonrandom")
+defA <- defDataAdd(defA, varname = "Y.r", 
+                   formula = "(A == 0) * Y0 + (A == 1) * Y1",
+                   dist = "nonrandom")
+
+### Complier status
+
+defC <- defCondition(condition = "T0 == 0 & T1 == 0", formula = 1,
+                     dist = "nonrandom")
+defC <- defCondition(defC, condition = "T0 == 0 & T1 == 1", formula = 2,
+                     dist = "nonrandom")
+defC <- defCondition(defC, condition = "T0 == 1 & T1 == 1", formula = 3,
+                     dist = "nonrandom")
+```
+
+
+
+```{r}
+set.seed(383726)
+
+# Step 1 - generate U and potential outcomes for T and Y
+
+dx <- genData(500, def)
+
+# Step 2 - randomly assign instrument
+
+dx <- trtAssign(dx, nTrt = 2, grpName = "A" )
+
+# Step 3 - generate observed T and Y
+
+dx <- addColumns(defA, dx)
+  
+# Step 4 - determine complier status
+
+dx <- addCondition(defC, dx, "S")
+dx <- genFactor(dx, "S", labels = c("Never", "Complier", "Always"))
+
+ACE <- dx[, mean(Y1 - Y0)]
+AACE <- dx[fS == "Always", mean(Y1 - Y0)]
+CACE <- dx[fS == "Complier", mean(Y1 - Y0)]
+NACE <- dx[fS == "Never", mean(Y1 - Y0)]
+ACT <- dx[T == 1, mean(Y1 - Y0)]
+
+rbind(ACE,
+      AACE,
+      CACE,
+      NACE,
+      ACT)
+```
+
+```{r}
+ggplot(dx, aes(x = U,
+               y = Y1)) +
+  geom_smooth(se = FALSE) +
+  geom_smooth(aes(y = Y0), se = FALSE, colour = "red") +
+  geom_smooth(aes(y = Y1 - Y0), se = FALSE)
+```
+
+
+```{r}
+y0_call <- "fYt(U, 2.5, 8, 0)"
+y1_call <- "fYt(U, 5.0, 15, 0.02)"
+def <- updateDef(def, "Y0", y0_call)
+def <- updateDef(def, "Y1", y1_call)
+dx <- genData(5000, def)
+dx <- trtAssign(dx, nTrt = 2, grpName = "A" )
+dx <- addColumns(defA, dx)
+dx <- addCondition(defC, dx, "S")
+dx[, fS := factor(S, levels = c(1, 2, 3), 
+                    labels = c("Never", "Complier", "Always"))]
+dx
+```
+
+```{r}
+ggplot(dx, aes(x = U,
+               y = Y1)) +
+  geom_smooth(se = FALSE) +
+  geom_smooth(aes(y = Y0), se = FALSE, colour = "red") +
+  geom_smooth(aes(y = Y1 - Y0), se = FALSE, colour = "black")
+```
+
+
+
+
+```{r}
+ivreg(Y ~ T | A, data = dx)
+model_formula <- Y ~ T | A
+dx %>% 
+  ivreg(formula = model_formula, data = .)
+```
+
+
+```{r}
+boots <- bootstrap(dx, 1000)
+fit_iv_on_bs <- function(split){
+  model <- ivreg(Y ~ T | A, data = split)
+  return(model)
+}
+
+boot_models <- boots %>% 
+  mutate(model = map(strap, fit_iv_on_bs),
+         coef_info = map(model, tidy))
+boot_coefs <- boot_models %>% 
+  unnest(coef_info)
+```
+
+
+
+plots
+```{r}
+library(ggridges)
+boot_coefs %>% 
+  ggplot(aes(x = estimate, y = term, fill = term)) +
+  geom_density_ridges() +
+  theme_ridges() 
+```
+
+fitting first stage
+
+```{r}
+
+fit_first_stage_on_bs <- function(splits){
+  model <- lm(T ~ A, data = splits)
+  return(model)
+}
+
+boot_models <- boots %>% 
+  mutate(model = map(strap, fit_first_stage_on_bs),
+         coef_info = map(model, tidy))
+boot_coefs <- boot_models %>% 
+  unnest(coef_info)
+
+boot_coefs %>% 
+  ggplot(aes(x = estimate)) +
+  geom_histogram()
+```
+
