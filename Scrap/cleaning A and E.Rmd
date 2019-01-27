@@ -1,0 +1,238 @@
+---
+title: "Cleaning Angrist and Evans 1998"
+author: "Ed Jee"
+date: "22 January 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Importing and cleaning 1990 Census Data
+```{r}
+library(haven)
+library(dplyr)
+df_90 <- read_sas("AngEv98/AngEv98/m_d_903.sas7bdat")
+```
+
+
+Cleaning data according to Angrist and Evans SAS replication codes:
+```{r}
+df_90_clean <- df_90 %>%
+  filter((AGEM <= 35) & (AGEM >= 21)) %>% 
+  filter(KIDCOUNT >= 2) %>% 
+  filter(AGE2NDK >= 1) %>% 
+  filter(AAGE == "0" & AAGE2ND == "0" & ASEX == "0" & ASEX2ND == "0") %>% 
+  mutate(fertdif = as.numeric(KIDCOUNT) - (as.numeric(FERTIL) - 1),
+         agefstm = as.numeric(AGEM) - as.numeric(AGEK)) %>% 
+  filter(agefstm >= 15) %>% 
+  filter(PWGTM1 > 0) %>% 
+  mutate(samesex = (SEXK == SEX2NDK),
+         morekids = (KIDCOUNT > 2)) %>% 
+  mutate(SEXK = as.numeric(SEXK),
+         SEX2NDK = as.numeric(SEX2NDK),
+         WEEK89D = as.numeric(WEEK89D),
+         WEEK89M = as.numeric(WEEK89M)) %>% 
+  rename_all(tolower)
+
+
+df_90_subset <- df_90_clean %>% 
+  rename(kid_age = agek,
+         kid2_age = age2ndk,
+         m_age = agem,
+         d_age = aged) %>% 
+  select(-starts_with("a")) %>% 
+  mutate_at(c("racek",
+              "birthplk",
+              "schoolk",
+              "state",
+              "racem",
+              "raced",
+              "hispm",
+              "hispd",
+              "poverty",
+              "pobm",
+              "schoolm",
+              "hispd",
+              "pobd",
+              "schoold",
+              "hispk"), factor) %>% 
+  mutate_if(is.character, as.numeric)
+  
+  
+  
+df_90_subset %>% 
+  skimr::skim()
+```
+
+
+```{r}
+library(tidyr)
+df_90_prepared <- df_90_subset %>% 
+  drop_na() %>% 
+  filter_if(is.numeric, all_vars(. >=0)) %>% 
+  mutate(dummy_col = 1,
+         samesex = as.numeric(samesex),
+         morekids = as.numeric(morekids))
+
+```
+
+
+
+## Random Forest
+
+
+```{r}
+library(grf)
+N_obs <- 10000
+df_rf <- df_90_prepared %>% 
+  select(sex2ndk,
+         multi2nd,
+         kid2_age,
+         sexk,
+         kid_age,
+         pwgtk1,
+         yearschk,
+         yearschm,
+         yearschd,
+         twin1st,
+         m_age,
+         samesex,
+         morekids) %>% 
+  na.omit() %>% 
+  sample_n(N_obs)
+
+X_matrix <- df_rf %>% 
+  select(-samesex, -morekids) %>% 
+  as.matrix()
+
+forest_first_stage <- causal_forest(X = X_matrix,
+                                    Y = df_rf$morekids,
+                                    W = df_rf$samesex,
+                                    num.trees = 4000) 
+tau_hat_oob <- predict(forest_first_stage, estimate.variance = TRUE) %>% as_tibble()
+hist(tau_hat_oob$predictions)
+library(ggplot2)
+ggplot(tau_hat_oob, aes(x = predictions)) +
+  geom_histogram()
+
+tau_hat_results <- tau_hat_oob %>% 
+  arrange(predictions) %>% 
+  mutate(sigma_hat = sqrt(variance.estimates),
+         prediction_lo = predictions - 1.96*sigma_hat,
+         prediction_hi = predictions + 1.96*sigma_hat,
+         t_stat = predictions / sigma_hat,
+         critical_value = qt(0.95, N_obs - 13, lower.tail = FALSE),
+         reject_h0 = ifelse(t_stat < critical_value, 1, 0),
+         rank = row_number())
+
+tau_hat_results %>% 
+  ggplot(aes(x = rank, y = predictions, ymin = prediction_lo, ymax = prediction_hi)) + 
+  geom_point(aes(colour = factor(reject_h0))) +
+  geom_ribbon(alpha = 0.1) +
+  theme_minimal() +
+  geom_hline(yintercept = 0, linetype = "longdash")
+```
+
+```{r}
+tau_hat_results %>% 
+  filter(reject_h0 == 1) %>% 
+  ggplot(aes(x = rank, y = predictions, ymin = prediction_lo, ymax = prediction_hi)) +
+  geom_point() +
+  geom_ribbon(alpha = 0.1)
+  
+```
+
+
+## Classification
+
+
+```{r}
+library(magrittr)
+library(cluster)
+library(factoextra)
+library(recipes)
+
+
+
+trained_rec <- prep(rec_df, training = df_90_prepared)
+trained_rec
+
+df_90_scaled <- df_90_prepared %>% 
+  step_dummy(all(), -all_numeric())
+    
+res_HC <- df_90_scaled %>% 
+  dist(method = "euclidean") %>% 
+  hclust(method = "ward.D2")
+```
+
+
+
+```{r}
+k_m <- kmeans(df_90_scaled, 10, nstart = 20)
+k_m$cluster <- as.factor(k_m$cluster)
+
+ggplot(df_90_scaled, aes(x = m_age, y = week89m, colour = k_m$cluster)) +
+  geom_point()
+```
+
+
+visualising clusters
+```{r}
+fviz_dend(res_HC,
+          k = 4,
+          cex = 0.9,
+          k_colors = c("#2E9FDF", "#00AFBB", "#E7B800", "#FC4E07"),
+          color_labels_by_k = TRUE, # color labels by groups
+          rect = TRUE) # Add rectangle around groups)
+```
+
+
+
+# Recreating Table 5
+
+```{r}
+library(AER)
+library(broom)
+
+
+# worked_for_pay <- ivreg()
+
+weeks_worked <- ivreg(week89m ~ morekids | samesex,
+                      data = df_90_clean)
+weeks_worked %>% summary()
+
+
+hours_week <- ivreg(hour89m ~ morekids | samesex,
+                    data = df_90_clean)
+hours_week %>% summary()
+
+labour_income <- ivreg(incomem1 ~ morekids | samesex,
+                       data = df_90_clean)
+labour_income %>% summary()
+```
+
+ 
+OLS of more than two kids on same sex 
+```{r}
+lm(morekids ~ samesex, data = df_90_clean) %>% summary()
+```
+
+
+```{r}
+lm(morekids ~ sexk + sex2ndk + samesex + agem,  data =  df_90_clean) %>% summary()
+```
+
+
+
+```{r}
+agem agek age2ndk marital kidcount racem;
+
+proc reg;
+ model morekids=samesex;
+
+run;
+
+```
+
