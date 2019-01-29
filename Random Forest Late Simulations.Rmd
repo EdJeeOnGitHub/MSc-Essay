@@ -211,10 +211,12 @@ beepr::beep()
 
 ```{r}
 defier_prop_binary_taus %>% 
-  ggplot(aes(x = defier_proportion, y = n_significant_defiers)) +
+  ggplot(aes(x = defier_proportion, y = n_significant_defiers, colour = n_significant_defiers)) +
   geom_point() +
   theme_minimal() +
-  labs(title = "As proportion of defiers increase we detect more defiers")
+  labs(title = "As proportion of defiers increase we detect more defiers") +
+  guides(colour = "none") +
+  scale_color_continuous(low = "grey", high = "red")
 ```
 
 
@@ -230,7 +232,10 @@ defier_prop_binary_taus %>%
   scale_y_continuous(breaks = seq(from = 0, to = 10, by = 1), minor_breaks = NULL) +
   scale_color_continuous(low = "grey", high = "red")  +
   theme_minimal() +
-  labs(title = "As proportion of defiers increase our ability to detect at least one defier increases.")
+  labs(title = "As proportion of defiers increase our ability to detect at least one defier increases",
+       x = "Proportion of defiers present in the data",
+       y = "Occasions defiers found",
+       caption = "After ten simulations per defier proportion, a value of nine indicates we found \n statistically significant defiers nine times out of ten.")
   
 ```
 
