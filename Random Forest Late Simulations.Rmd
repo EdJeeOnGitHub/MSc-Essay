@@ -1,0 +1,245 @@
+---
+title: "Random Forest Late Simulations"
+author: "Ed Jee"
+date: "January 27, 2019"
+output:
+    html_document:
+      code_folding: show
+      highlight: tango
+      theme: readable
+      toc: yes
+      toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(grf)
+
+create_binary_complier_defier <- function(n, beta_complier, beta_defier, prop_defier){
+  ATE <- beta_defier * prop_defier + (1 - prop_defier) * beta_complier
+  if (ATE < 0){
+    stop("Average Treatment Effect less than 0")
+  }
+  defier_status <- rbinom(n = n, size = 1, prob = prop_defier)
+  tau <- beta_defier * defier_status + beta_complier * (1 - defier_status)
+  i <- 0
+  while (mean(tau) < 0){
+    i <- i + 1
+    if (i == 10){
+      warning("Sample ATE less than 0")
+      break
+    }
+    defier_status <- rbinom(n = n, size = 1, prob = prop_defier)
+    tau <- beta_defier * defier_status + beta_complier * (1 - defier_status)
+  }
+  return(tau)
+}
+
+create_covariate_data <- function(n, n_variables){
+  X <- matrix(rnorm(n*n_variables), n, n_variables)
+  return(X)
+}
+
+
+create_likelihood <- function(covariates, instrument, tau){
+  n <- length(instrument)
+  Y <- covariates[, 1] * 0.5 + (covariates[, 2]^2) * 0.4 + -1*covariates[, 3] + instrument*tau + rnorm(n)
+  return(Y)
+}
+
+create_simulated_data <- function(n = 1000, n_variables = 5, instrument, tau){
+  X <- create_covariate_data(n = n, n_variables = n_variables)
+  Y <- create_likelihood(covariates = X, instrument = instrument, tau = tau)
+  return(list("X" = X, "Y" = Y, "instrument" = instrument))
+}
+
+
+```
+
+
+```{r}
+
+estimate_heterogeneous_tau <- function(X, Y, Z, tree_number = 4000, num.threads = NULL){
+  rf <- causal_forest(X = X, Y = Y, W = Z, num.trees = tree_number, num.threads = num.threads)
+  tau_hat_oob <- predict(rf, estimate.variance = TRUE)
+  return(tau_hat_oob)
+}
+
+perform_inference_mono <- function(tau_hat_data, alpha, n_covariates){
+  n <- nrow(tau_hat_data)
+  critical_value <- qt(1 - alpha, df = n - n_covariates - 2, lower.tail = FALSE)
+  tau_transformed <- tau_hat_data %>% 
+    mutate(t_stat = predictions / sqrt(variance.estimates),
+           reject_H0 = ifelse(t_stat < critical_value, 1, 0))
+  return(tau_transformed)
+}
+
+
+violates_monotonicity_check <- function(tau_hat_t_stat){
+  violations <- tau_hat_t_stat %>% 
+    filter(reject_H0 == 1)
+  if (nrow(violations) > 0){
+    return(TRUE)
+  } else {
+    return(FALSE)
+  }
+}
+
+minimum_tau_hat <- function(tau_hat_t_stat){
+  min_tau_hat <- min(tau_hat_t_stat$predictions)
+  min_tau_hat_df <- tau_hat_t_stat %>% 
+    filter(predictions == min_tau_hat)
+  return(min_tau_hat_df)
+}
+
+find_number_of_defiers <- function(tau_hat_t_stat, tau){
+  n_defiers_true <- sum(tau < 0)
+  n_defiers_estimated <- sum(tau_hat_t_stat$predictions < 0)
+  n_significant_defiers <- sum(tau_hat_t_stat$reject_H0)
+  df <- tibble(n_defiers_true, n_defiers_estimated, n_significant_defiers)
+  return(df)
+}
+
+```
+
+
+## Simulations
+
+
+### Defier Beta
+```{r}
+
+run_defier_beta_simulations <- function(beta_defier, N, num.threads = NULL, verbose = FALSE){
+  binary_instrument <- rbinom(N, 1, 0.5)
+  binary_tau <- create_binary_complier_defier(N,
+                                              beta_complier = 0.5,
+                                              beta_defier = beta_defier,
+                                              prop_defier = 0.25)
+  sim_df <- create_simulated_data(instrument = binary_instrument, tau = binary_tau, n = N)
+  tau_hat <- estimate_heterogeneous_tau(sim_df$X, sim_df$Y, sim_df$instrument, num.threads = num.threads)
+  tau_hat_augmented <- perform_inference_mono(tau_hat, alpha = 0.05, n_covariates = 5)
+
+  if (verbose == TRUE){
+    mono_violated <- violates_monotonicity_check(tau_hat_augmented)
+    print(paste0(beta_defier, "Monotonicity Violated: ", mono_violated))
+    return(mono_violated)
+  }
+  
+  n_defier_summary <- find_number_of_defiers(tau_hat_augmented, binary_tau)
+  return(n_defier_summary)
+}
+
+
+# binary_instrument <- rbinom(1000, 1, 0.5)
+# binary_tau <- create_binary_complier_defier(1000, beta_complier =  0.4, beta_defier = -0.1, prop_defier = 0.25)
+# 
+# sim_df <- create_simulated_data(instrument = binary_instrument, tau = binary_tau)
+# 
+# tau_hat <- estimate_heterogeneous_tau(sim_df$X, sim_df$Y, sim_df$instrument)
+# tau_hat_augmented <- perform_inference_mono(tau_hat, alpha = 0.05, n_covariates = 5)
+# violates_monotonicity_check(tau_hat_augmented)
+
+```
+
+```{r}
+library(purrr)
+tictoc::tic()
+defier_beta_binary_taus <- rep(seq(from = 0, to = -1.5, by = -0.1), 10) %>%
+  map_df(., ~(run_defier_beta_simulations(N = 1000, verbose = FALSE, beta_defier = .) %>% 
+           mutate(beta_defier = .x)))
+tictoc::toc()
+beepr::beep()
+
+```
+
+
+
+```{r}
+defier_beta_binary_taus %>% 
+  ggplot(aes(x = beta_defier, y = n_significant_defiers, colour = n_significant_defiers)) +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(title = "Defier detection improves as negative treatment effects increase in size") +
+  scale_color_continuous(low = "grey", high = "red") +
+  guides(colour = "none")
+```
+
+
+
+### Defier Size
+```{r}
+run_defier_proportion_simulation <- function(prop_defier, N, num.threads = NULL, verbose = FALSE){
+  binary_instrument <- rbinom(N, 1, 0.5)
+  binary_tau <- create_binary_complier_defier(N,
+                                              beta_complier = 0.5,
+                                              beta_defier = -0.5,
+                                              prop_defier = prop_defier)
+  sim_df <- create_simulated_data(instrument = binary_instrument, tau = binary_tau, n = N)
+  tau_hat <- estimate_heterogeneous_tau(sim_df$X, sim_df$Y, sim_df$instrument, num.threads = num.threads)
+  tau_hat_augmented <- perform_inference_mono(tau_hat, alpha = 0.05, n_covariates = 5)
+
+  if (verbose == TRUE){
+    mono_violated <- violates_monotonicity_check(tau_hat_augmented)
+    print(paste0(beta_defier, "Monotonicity Violated: ", mono_violated))
+    return(mono_violated)
+  }
+  
+  n_defier_summary <- find_number_of_defiers(tau_hat_augmented, binary_tau)
+  return(n_defier_summary)
+}
+```
+
+
+
+
+```{r}
+tictoc::tic()
+defier_prop_binary_taus <- rep(seq(from = 0, to = 0.5, by = 0.01), 10) %>%
+  map_df(., ~(run_defier_proportion_simulation(N = 1000, verbose = FALSE, prop_defier = .) %>% 
+           mutate(defier_proportion = .x)))
+tictoc::toc()
+beepr::beep()
+```
+
+
+```{r}
+defier_prop_binary_taus %>% 
+  ggplot(aes(x = defier_proportion, y = n_significant_defiers)) +
+  geom_point() +
+  theme_minimal() +
+  labs(title = "As proportion of defiers increase we detect more defiers")
+```
+
+
+```{r}
+library(RColorBrewer)
+defier_prop_binary_taus %>% 
+  mutate(any_defiers = ifelse(n_significant_defiers > 0, 1, 0)) %>% 
+  group_by(defier_proportion) %>% 
+  summarise(defiers_found = sum(any_defiers)) %>% 
+  ggplot(aes(x = defier_proportion, y = defiers_found, colour = defiers_found)) +
+  geom_point(size = 2) +
+  guides(colour = "none") +
+  scale_y_continuous(breaks = seq(from = 0, to = 10, by = 1), minor_breaks = NULL) +
+  scale_color_continuous(low = "grey", high = "red")  +
+  theme_minimal() +
+  labs(title = "As proportion of defiers increase our ability to detect at least one defier increases.")
+  
+```
+
+
+## Now holding ATE constant
+
+TODO: write a function that balances ATE as we change stuff.
+under H_0 P VALUES ARE UNIFORMLY DISTRIBUTED
+```{r}
+
+```
+
