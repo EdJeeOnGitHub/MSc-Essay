@@ -19,9 +19,9 @@ knitr::opts_chunk$set(echo = TRUE,
 
 
 
-This document explores Causal Random Forests Ability to detect heterogeneous treatment effects with different signs - i.e. the ability to detect defiers in a first stage regression equation.
+This document explores Causal Random Forest's ability to detect heterogeneous treatment effects with different signs - i.e. the ability to detect defiers in a first stage regression equation.
 
-We start by defining some simulation functions that will be useful:
+We start by defining some simulation functions that will be useful. All the R code can be hidden using the top right dropdown button if you wish but not every plot is explained so sometimes the code helps.
 ```{r}
 library(dplyr)
 library(ggplot2)
@@ -320,7 +320,7 @@ tau_sim_defiers_p %>%
        subtitle = "Normal Scale")
 ```
 
-
+The straight lines throughout represent where the data should like under the null.
 
 
 ```{r}
@@ -470,7 +470,7 @@ many_p_vals %>%
             mean_two = mean(signif_at_5))
 ```
 
-How about for random forest:
+How about for random forest - we only use 10 simulation draws as this takes FOREVER:
 ```{r}
 anonymous_tau_simulation <- function(dummy_arg, N = 1000, beta_complier, beta_defier, prop_defier){
   tau_simulation(N = N, beta_complier = beta_complier, beta_defier = beta_defier, prop_defier = prop_defier) %>% 
@@ -481,14 +481,23 @@ many_tau_pvals <- 1:10 %>%
   map_df(anonymous_tau_simulation, N = 1000, beta_complier = 0, beta_defier = 0, prop_defier = 0.5)
 
 many_tau_pvals <- many_tau_pvals %>% 
-  mutate(two_pval = 2*pnorm(-abs(t_stat)),
-         reject_H0_twosided = ifelse(two_pval < 0.05, 1, 0))
+  mutate(two_pval = 2*pt(-abs(t_stat), df = 994 ),
+         reject_H0_twosided = ifelse(two_pval < 0.05, 1, 0),
+         one_pval = pt(t_stat, df = 994),
+         reject_H0_onesided = ifelse(one_pval < 0.05, 1, 0))
 
 many_tau_pvals %>% 
   ggplot(aes(x = two_pval)) +
   geom_histogram() +
-  facet_wrap(~draw)
-  
+  facet_wrap(~draw) +
+  labs(title = "Histogram of two sided p value per simulation draw")
+
+
+many_tau_pvals %>% 
+  ggplot(aes(x = one_pval)) +
+  geom_histogram() +
+  facet_wrap(~draw) +
+  labs(title = "Histogram of one sided p value per simulation draw")
 ```
 
 
@@ -496,13 +505,15 @@ This is how often we commit a type 1 error per regression draw- i.e. we find how
 ```{r}
 many_tau_pvals %>% 
   group_by(draw) %>% 
-  summarise(reject_H0_pct = mean(reject_H0_twosided))
+  summarise(reject_H0_pct_two = mean(reject_H0_twosided),
+            reject_H0_pct_one = mean(reject_H0_onesided))
 ```
 
 This is the total number of times we reject the null across all the regressions.
 ```{r}
 many_tau_pvals %>% 
-  summarise(reject_H0_pct = mean(reject_H0_twosided))
+  summarise(reject_H0_pct_two = mean(reject_H0_twosided),
+            reject_H0_pct_one = mean(reject_H0_onesided))
 ```
 
 
@@ -510,16 +521,19 @@ We want to know how many times we reject the null at least once in a regression.
 ```{r}
 many_tau_pvals %>% 
   group_by(draw) %>% 
-  summarise(rejected_at_least_once = ifelse(sum(reject_H0_twosided), 1, 0))
+  summarise(rejected_at_least_once_twosided = ifelse(sum(reject_H0_twosided), 1, 0),
+            rejected_at_least_once_onesided = ifelse(sum(reject_H0_onesided), 1, 0))
 ```
 
 Clearly we need to make a correction:
 ```{r}
 many_tau_pvals %>% 
   group_by(draw) %>% 
-  summarise(rejected_at_least_once = ifelse(sum(reject_H0_twosided), 1, 0)) %>% 
+  summarise(rejected_at_least_once_twosided = ifelse(sum(reject_H0_twosided), 1, 0),
+            rejected_at_least_once_onesided = ifelse(sum(reject_H0_onesided), 1, 0))%>% 
   ungroup() %>% 
-  summarise(rejected_H0_once_pct = mean(rejected_at_least_once))
+  summarise(rejected_H0_once_pct_twosided = mean(rejected_at_least_once_twosided),
+            rejected_H0_once_pct_onesided = mean(rejected_at_least_once_onesided))
 ```
 
 Currently our false discovery rate is 100\% - not good.
