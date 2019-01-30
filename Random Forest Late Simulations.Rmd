@@ -18,6 +18,10 @@ knitr::opts_chunk$set(echo = TRUE,
 ```
 
 
+
+This document explores Causal Random Forests Ability to detect heterogeneous treatment effects with different signs - i.e. the ability to detect defiers in a first stage regression equation.
+
+We start by defining some simulation functions that will be useful:
 ```{r}
 library(dplyr)
 library(ggplot2)
@@ -66,6 +70,8 @@ create_simulated_data <- function(n = 1000, n_variables = 5, instrument, tau){
 ```
 
 
+
+These functions deal with the actual estimation and post-processing of models:
 ```{r}
 
 estimate_heterogeneous_tau <- function(X, Y, Z, tree_number = 4000, num.threads = NULL){
@@ -116,7 +122,19 @@ find_number_of_defiers <- function(tau_hat_t_stat, tau){
 
 
 ## Defier Beta
+
+Estimating tau with defiers and exploring how our ability to detect defiers changes as the defier slope coefficient increases in absolute value - we don't hold ATE constant here so ATE tends to 0 as we explore the more extreme defier values. Commented code indicates the underlying commands necessary to run one draw of the model.
 ```{r}
+
+# binary_instrument <- rbinom(1000, 1, 0.5)
+# binary_tau <- create_binary_complier_defier(1000, beta_complier =  0.4, beta_defier = -0.1, prop_defier = 0.25)
+# 
+# sim_df <- create_simulated_data(instrument = binary_instrument, tau = binary_tau)
+# 
+# tau_hat <- estimate_heterogeneous_tau(sim_df$X, sim_df$Y, sim_df$instrument)
+# tau_hat_augmented <- perform_inference_mono(tau_hat, alpha = 0.05, n_covariates = 5)
+# violates_monotonicity_check(tau_hat_augmented)
+
 
 run_defier_beta_simulations <- function(beta_defier, N, num.threads = NULL, verbose = FALSE){
   binary_instrument <- rbinom(N, 1, 0.5)
@@ -137,19 +155,11 @@ run_defier_beta_simulations <- function(beta_defier, N, num.threads = NULL, verb
   n_defier_summary <- find_number_of_defiers(tau_hat_augmented, binary_tau)
   return(n_defier_summary)
 }
-
-
-# binary_instrument <- rbinom(1000, 1, 0.5)
-# binary_tau <- create_binary_complier_defier(1000, beta_complier =  0.4, beta_defier = -0.1, prop_defier = 0.25)
-# 
-# sim_df <- create_simulated_data(instrument = binary_instrument, tau = binary_tau)
-# 
-# tau_hat <- estimate_heterogeneous_tau(sim_df$X, sim_df$Y, sim_df$instrument)
-# tau_hat_augmented <- perform_inference_mono(tau_hat, alpha = 0.05, n_covariates = 5)
-# violates_monotonicity_check(tau_hat_augmented)
-
 ```
 
+
+
+Here we read in a csv containing simulated draws to save time.
 ```{r}
 # library(purrr)
 # tictoc::tic()
@@ -177,6 +187,8 @@ defier_beta_binary_taus %>%
 
 
 ## Defier Size
+
+Now we do the same but vary the proportion of defiers present in the data - again ATE tends to 0 in the tail.
 ```{r}
 run_defier_proportion_simulation <- function(prop_defier, N, num.threads = NULL, verbose = FALSE){
   binary_instrument <- rbinom(N, 1, 0.5)
@@ -201,7 +213,7 @@ run_defier_proportion_simulation <- function(prop_defier, N, num.threads = NULL,
 
 
 
-
+Again, loading cached data.
 ```{r}
 # tictoc::tic()
 defier_prop_binary_taus <- read.csv("defier_prop_binary_taus.csv")
@@ -244,16 +256,24 @@ defier_prop_binary_taus %>%
 ```
 
 
-# P Values
+We need to repeat the above but holding ATE constant.
 
+# p-values
+
+Now we explore the p-values resulting from heterogeneous $\pi_i$ estimation. We borrow a common tactic in studies of genome data and compare the QQ p-value plots on the negative log(10) scale. UNDER THE NULL HYPOTHESIS P VALUES SHOULD BE UNIFORMLY DISTRIBUTED ON THE INTERVAL [0,1].
+
+However, there's a huge problem. We define:
+$$
+H_0: \pi_i = 0 \\
+H_1: \pi_i < 0
+$$
+
+But of course $\pi_i$ is often positive - it's average certainly is since we estimate a positive first stage (by design monotonicity has that whole "vice versa" thing going on). Therefore, when we have significant POSITIVE $\hat{\pi_i}$ the p values will be particularly large and this thing won't be uniformly distributed which implies we reject $H_0$ BUT AS EVERYONE KNOWS THIS DOESN'T IMPLY WE ACCEPT $H_1$ THIS IS A PROBLEM AS NON-UNIFORMITY OF THE P VALUES CAN EITHER BE BECAUSE PI IS POSITIVE OR NEGATIVE AND DISENTANGLING THE TWO RIGOROUSLY ISN'T GOING TOO HOT.
+
+
+The negative log ten scale just means that really, really small p values (the ones we're essentially interested in) appear in the top right hand corner of the plot and just makes stuff easier to distinguish in the tail.
 ```{r}
 library(scales)
-
-
-
-
-
-
 tau_simulation <- function(N = 1000, beta_complier, beta_defier, prop_defier){
   binary_instrument <- rbinom(N, 1, 0.5)
   binary_tau <- create_binary_complier_defier(N,
@@ -287,7 +307,8 @@ tau_sim_defiers_p %>%
   theme_minimal() +
   scale_x_continuous(trans=negative_log_trans(10)) +
   scale_y_continuous(trans=negative_log_trans(10)) +
-  labs(title = "QQ plot of P-values")
+  labs(title = "QQ plot of P-values DEFIERS",
+       subtitle = "Log(10) Scale")
 
 
 tau_sim_defiers_p %>% 
@@ -295,7 +316,8 @@ tau_sim_defiers_p %>%
   stat_qq(distribution = qunif, aes(colour = reject_H0))  +
   geom_abline(intercept = 0, slope = 1) +
   theme_minimal() +
-  labs(title = "QQ plot of P-values")
+  labs(title = "QQ plot of P-values",
+       subtitle = "Normal Scale")
 ```
 
 
@@ -313,7 +335,8 @@ tau_sim_compliers_p %>%
   theme_minimal() +
   scale_x_continuous(trans=negative_log_trans(10)) +
   scale_y_continuous(trans=negative_log_trans(10)) +
-  labs(title = "QQ plot of P-values")
+  labs(title = "QQ plot of P-values COMPLIERS",
+       subtitle = "Log(10) Scale")
 
 
 tau_sim_compliers_p %>% 
@@ -321,7 +344,8 @@ tau_sim_compliers_p %>%
   stat_qq(distribution = qunif)  +
   geom_abline(intercept = 0, slope = 1) +
   theme_minimal() +
-  labs(title = "QQ plot of P-values")
+  labs(title = "QQ plot of P-values COMPLIERS",
+       subtitle = "Normal Scale")
 ```
 
 ```{r}
@@ -390,9 +414,105 @@ p_vals_negative %>%
 
 # Now holding ATE constant
 
-TODO: write a function that balances ATE as we change stuff.
-under H_0 P VALUES ARE UNIFORMLY DISTRIBUTED
+TODO: write a function that balances ATE as we change stuff - currently ATE CHANGES.
 ```{r}
+## Find Betas to balance ATE given range of beta to explore for defiers
 
+## This but with proportion defiers
+
+## Check if ATE balances function goes here.
+
+## Run simulation function goes here.
 ```
 
+
+
+
+
+# Investigating False Discovery Rate
+
+Confirming that setting $\alpha = 0.05$ will give 5\% false positives:
+```{r}
+library(furrr)
+plan(multiprocess)
+library(broom)
+run_many_lm <- function(dummy_arg, coef_x){
+  x <- rnorm(1000)
+  y <- coef_x*x + rnorm(1000)
+  model <- lm(y ~ x)
+  model <- model %>% 
+    tidy()
+  return(model)
+}
+
+many_p_vals <- 1:10000 %>% 
+  future_map_dfr(run_many_lm, coef_x = 0, .options = future_options(packages = "broom"))
+
+many_p_vals %>%
+  mutate(signif_at_5 = ifelse(p.value < 0.05, 1, 0)) %>% 
+  filter(term == "x") %>% 
+  summarise(mean(signif_at_5))
+
+many_p_vals %>% 
+  ggplot(aes(x = p.value, y = term, fill = term)) +
+  ggridges::geom_density_ridges() +
+  ggridges::theme_ridges() +
+  labs(title = "Clearly Uniform As Expected")
+  
+```
+
+
+
+How about for random forest:
+```{r}
+anonymous_tau_simulation <- function(dummy_arg, N = 1000, beta_complier, beta_defier, prop_defier){
+  tau_simulation(N = N, beta_complier = beta_complier, beta_defier = beta_defier, prop_defier = prop_defier) %>% 
+    mutate(draw = dummy_arg)
+}
+
+many_tau_pvals <- 1:10 %>% 
+  map_df(anonymous_tau_simulation, N = 1000, beta_complier = 0, beta_defier = 0, prop_defier = 0.5)
+
+many_tau_pvals <- many_tau_pvals %>% 
+  mutate(two_pval = 2*pnorm(-abs(t_stat)),
+         reject_H0_twosided = ifelse(two_pval < 0.05, 1, 0))
+
+many_tau_pvals %>% 
+  ggplot(aes(x = two_pval)) +
+  geom_histogram() +
+  facet_wrap(~draw)
+  
+```
+
+
+This is how often we commit a type 1 error per regression draw- i.e. we find how many times we reject the null for each $\pi_i$ AFTER ONE REGRESSION. I have no prior on what this should be - it looks like there's a lot of variance though. Increasing number of datapoints should let us estimate this better.
+```{r}
+many_tau_pvals %>% 
+  group_by(draw) %>% 
+  summarise(reject_H0_pct = mean(reject_H0_twosided))
+```
+
+This is the total number of times we reject the null across all the regressions.
+```{r}
+many_tau_pvals %>% 
+  summarise(reject_H0_pct = mean(reject_H0_twosided))
+```
+
+
+We want to know how many times we reject the null at least once in a regression. Increasing number of simulations should let us estimate this better.
+```{r}
+many_tau_pvals %>% 
+  group_by(draw) %>% 
+  summarise(rejected_at_least_once = ifelse(sum(reject_H0_twosided), 1, 0))
+```
+
+Clearly we need to make a correction:
+```{r}
+many_tau_pvals %>% 
+  group_by(draw) %>% 
+  summarise(rejected_at_least_once = ifelse(sum(reject_H0_twosided), 1, 0)) %>% 
+  ungroup() %>% 
+  summarise(rejected_H0_once_pct = mean(rejected_at_least_once))
+```
+
+Currently our false discovery rate is 100\% - not good.
