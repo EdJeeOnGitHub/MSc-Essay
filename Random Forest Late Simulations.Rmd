@@ -446,10 +446,10 @@ run_many_lm <- function(dummy_arg, coef_x){
 }
 
 many_p_vals <- 1:10000 %>% 
-  future_map_dfr(run_many_lm, coef_x = 0, .options = future_options(packages = "broom"))
+  future_map_dfr(run_many_lm, coef_x = 0, .options = future_options(packages = "broom")) %>% 
+  mutate(signif_at_5 = ifelse(p.value < 0.05, 1, 0))
 
 many_p_vals %>%
-  mutate(signif_at_5 = ifelse(p.value < 0.05, 1, 0)) %>% 
   filter(term == "x") %>% 
   summarise(mean(signif_at_5))
 
@@ -461,7 +461,14 @@ many_p_vals %>%
   
 ```
 
-
+Now one sided:
+```{r}
+many_p_vals %>% 
+  mutate(one_side_p = pt(statistic, df = 998),
+         reject_p_oneside = ifelse(one_side_p < 0.05, 1, 0)) %>% 
+  summarise(mean_one = mean(reject_p_oneside),
+            mean_two = mean(signif_at_5))
+```
 
 How about for random forest:
 ```{r}
