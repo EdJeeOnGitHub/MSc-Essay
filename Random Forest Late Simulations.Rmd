@@ -12,7 +12,9 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE,
+                      warning = FALSE,
+                      message = FALSE)
 ```
 
 
@@ -110,10 +112,10 @@ find_number_of_defiers <- function(tau_hat_t_stat, tau){
 ```
 
 
-## Simulations
+# Simulations
 
 
-### Defier Beta
+## Defier Beta
 ```{r}
 
 run_defier_beta_simulations <- function(beta_defier, N, num.threads = NULL, verbose = FALSE){
@@ -149,13 +151,14 @@ run_defier_beta_simulations <- function(beta_defier, N, num.threads = NULL, verb
 ```
 
 ```{r}
-library(purrr)
-tictoc::tic()
-defier_beta_binary_taus <- rep(seq(from = 0, to = -1.5, by = -0.1), 10) %>%
-  map_df(., ~(run_defier_beta_simulations(N = 1000, verbose = FALSE, beta_defier = .) %>% 
-           mutate(beta_defier = .x)))
-tictoc::toc()
-beepr::beep()
+# library(purrr)
+# tictoc::tic()
+defier_beta_binary_taus <- read.csv("beta_binary_taus.csv") %>% as_tibble()
+# defier_beta_binary_taus <- rep(seq(from = 0, to = -1.5, by = -0.1), 10) %>%
+#   map_df(., ~(run_defier_beta_simulations(N = 1000, verbose = FALSE, beta_defier = .) %>% 
+#            mutate(beta_defier = .x)))
+# tictoc::toc()
+# beepr::beep()
 
 ```
 
@@ -173,7 +176,7 @@ defier_beta_binary_taus %>%
 
 
 
-### Defier Size
+## Defier Size
 ```{r}
 run_defier_proportion_simulation <- function(prop_defier, N, num.threads = NULL, verbose = FALSE){
   binary_instrument <- rbinom(N, 1, 0.5)
@@ -200,12 +203,13 @@ run_defier_proportion_simulation <- function(prop_defier, N, num.threads = NULL,
 
 
 ```{r}
-tictoc::tic()
-defier_prop_binary_taus <- rep(seq(from = 0, to = 0.5, by = 0.01), 10) %>%
-  map_df(., ~(run_defier_proportion_simulation(N = 1000, verbose = FALSE, prop_defier = .) %>% 
-           mutate(defier_proportion = .x)))
-tictoc::toc()
-beepr::beep()
+# tictoc::tic()
+defier_prop_binary_taus <- read.csv("defier_prop_binary_taus.csv")
+# defier_prop_binary_taus <- rep(seq(from = 0, to = 0.5, by = 0.01), 10) %>%
+#   map_df(., ~(run_defier_proportion_simulation(N = 1000, verbose = FALSE, prop_defier = .) %>% 
+#            mutate(defier_proportion = .x)))
+# tictoc::toc()
+# beepr::beep()
 ```
 
 
@@ -240,7 +244,151 @@ defier_prop_binary_taus %>%
 ```
 
 
-## Now holding ATE constant
+# P Values
+
+```{r}
+library(scales)
+
+
+
+
+
+
+tau_simulation <- function(N = 1000, beta_complier, beta_defier, prop_defier){
+  binary_instrument <- rbinom(N, 1, 0.5)
+  binary_tau <- create_binary_complier_defier(N,
+                                              beta_complier = beta_complier,
+                                              beta_defier = beta_defier,
+                                              prop_defier = prop_defier)
+  sim_df <- create_simulated_data(instrument = binary_instrument, tau = binary_tau, n = N)
+  tau_hat <- estimate_heterogeneous_tau(sim_df$X, sim_df$Y, sim_df$instrument)
+  tau_hat_augmented <- perform_inference_mono(tau_hat, alpha = 0.05, n_covariates = 5) %>% 
+    as_tibble()
+  return(tau_hat_augmented)
+}
+
+
+negative_log_trans <- function(base = exp(1)) {
+    trans <- function(x) -log(x, base)
+    inv <- function(x) base^(-x)
+    trans_new(paste0("negative_log-", format(base)), trans, inv, 
+              log_breaks(base = base), 
+              domain = c(1e-100, Inf))
+}
+
+tau_sim_defiers <- tau_simulation(beta_complier = 0.5, beta_defier = -0.2, prop_defier = 0.25)
+
+tau_sim_defiers_p <- tau_sim_defiers %>% 
+  mutate(p_value = pnorm(t_stat))
+tau_sim_defiers_p %>% 
+  ggplot(aes(sample = p_value)) +
+  stat_qq(distribution = qunif)  +
+  geom_abline(intercept = 0, slope = 1) +
+  theme_minimal() +
+  scale_x_continuous(trans=negative_log_trans(10)) +
+  scale_y_continuous(trans=negative_log_trans(10)) +
+  labs(title = "QQ plot of P-values")
+
+
+tau_sim_defiers_p %>% 
+  ggplot(aes(sample = p_value)) +
+  stat_qq(distribution = qunif, aes(colour = reject_H0))  +
+  geom_abline(intercept = 0, slope = 1) +
+  theme_minimal() +
+  labs(title = "QQ plot of P-values")
+```
+
+
+
+
+```{r}
+tau_sim_compliers <- tau_simulation(beta_complier = 0.5, beta_defier = 0.5, prop_defier = 0.5)
+
+tau_sim_compliers_p <- tau_sim_compliers %>% 
+  mutate(p_value = pnorm(t_stat))
+tau_sim_compliers_p %>% 
+  ggplot(aes(sample = p_value)) +
+  stat_qq(distribution = qunif)  +
+  geom_abline(intercept = 0, slope = 1) +
+  theme_minimal() +
+  scale_x_continuous(trans=negative_log_trans(10)) +
+  scale_y_continuous(trans=negative_log_trans(10)) +
+  labs(title = "QQ plot of P-values")
+
+
+tau_sim_compliers_p %>% 
+  ggplot(aes(sample = p_value)) +
+  stat_qq(distribution = qunif)  +
+  geom_abline(intercept = 0, slope = 1) +
+  theme_minimal() +
+  labs(title = "QQ plot of P-values")
+```
+
+```{r}
+tau_sim_defiers_p <- tau_sim_defiers_p %>% 
+  mutate(type = "defiers")
+tau_sim_compliers_p <- tau_sim_compliers_p %>% 
+  mutate(type = "compliers")
+
+tau_comparison_p <-bind_rows(tau_sim_compliers_p,
+                             tau_sim_defiers_p)
+
+tau_comparison_p %>% 
+  ggplot(aes(sample = p_value)) +
+  stat_qq(distribution = qunif)  +
+  geom_abline(intercept = 0, slope = 1) +
+  theme_minimal() +
+  scale_x_continuous(trans=negative_log_trans(10)) +
+  scale_y_continuous(trans=negative_log_trans(10)) +
+  labs(title = "QQ plot of P-values") +
+  facet_wrap(~type)
+```
+
+
+
+```{r}
+library(broom)
+library(purrr)
+run_one_model <- function(dummy_arg, sign_factor, N = 1000){
+  if (sign_factor == 1){
+    indicator <- 1
+  } else {
+    indicator <- rbinom(1, 1, 0.8)  
+  }
+  
+  X <- matrix(rnorm(N*5), N, 5)
+  y <- rnorm(N, sd = 10) + X[, 1]*5*indicator + X[, 1]*-5*(1-indicator)
+  model <- lm(y ~ X) %>% 
+    tidy() %>%
+    mutate(one_sided_p = pnorm(statistic))
+  
+  return(model)
+}
+p_vals <- 1:1000 %>% 
+  map_df(run_one_model, N = 1000, sign_factor = 1)
+p_vals %>% 
+  ggplot(aes(sample = one_sided_p)) +
+  stat_qq(distribution = qunif) +
+  geom_abline(intercept = 0, slope = 1, colour = "blue") +
+  theme_minimal() +
+  labs(title = "QQ plot of P-values NO DEFIERS") +
+    scale_x_continuous(trans=negative_log_trans(10)) +
+  scale_y_continuous(trans=negative_log_trans(10))  +
+  facet_wrap(~term)
+p_vals_negative <- 1:1000 %>% 
+  map_df(run_one_model, N = 1000, sign_factor = -1)
+p_vals_negative %>% 
+  ggplot(aes(sample = one_sided_p)) +
+  stat_qq(distribution = qunif) +
+  geom_abline(intercept = 0, slope = 1, colour = "blue") +
+  theme_minimal() +
+  labs(title = "QQ plot of P-values DEFIERS PRESENT") +
+    scale_x_continuous(trans=negative_log_trans(10)) +
+  scale_y_continuous(trans=negative_log_trans(10)) +
+  facet_wrap(~term)
+```
+
+# Now holding ATE constant
 
 TODO: write a function that balances ATE as we change stuff.
 under H_0 P VALUES ARE UNIFORMLY DISTRIBUTED
