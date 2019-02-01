@@ -477,7 +477,7 @@ anonymous_tau_simulation <- function(dummy_arg, N = 1000, beta_complier, beta_de
     mutate(draw = dummy_arg)
 }
 
-many_tau_pvals <- 1:10 %>% 
+many_tau_pvals <- 1:50 %>% 
   map_df(anonymous_tau_simulation, N = 1000, beta_complier = 0, beta_defier = 0, prop_defier = 0.5)
 
 many_tau_pvals <- many_tau_pvals %>% 
@@ -537,3 +537,35 @@ many_tau_pvals %>%
 ```
 
 Currently our false discovery rate is 100\% - not good.
+
+
+
+## Corrections
+
+
+Now Benjamini Hochberg correction for the false discovery rate:
+```{r}
+corrected_tau_p_vals <- many_tau_pvals %>% 
+  group_by(draw) %>% 
+  mutate(one_pval_adjusted = p.adjust(one_pval, method = "bonferroni"))
+corrected_tau_p_vals %>% 
+  ggplot(aes(x = one_pval_adjusted)) +
+  geom_histogram() +
+  facet_wrap(~draw)
+```
+
+```{r}
+corrected_tau_p_vals %>% 
+  group_by(draw) %>% 
+  summarise(rejected_H0 = sum(ifelse(one_pval_BH < 0.05, 1, 0)))
+  
+```
+
+```{r}
+corrected_tau_p_vals %>% 
+  group_by(draw) %>% 
+  summarise(rejected_H0= sum(ifelse(one_pval_BH < 0.05, 1, 0))) %>% 
+  ungroup() %>% 
+  summarise(FDR = sum(ifelse(rejected_H0 > 0, 1, 0))/ length(rejected_H0))
+```
+
