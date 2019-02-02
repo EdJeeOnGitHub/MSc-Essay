@@ -85,14 +85,17 @@ perform_inference_mono <- function(tau_hat_data, alpha, n_covariates){
   critical_value <- qt(1 - alpha, df = n - n_covariates - 2, lower.tail = FALSE)
   tau_transformed <- tau_hat_data %>% 
     mutate(t_stat = predictions / sqrt(variance.estimates),
-           reject_H0 = ifelse(t_stat < critical_value, 1, 0))
+           reject_H0 = ifelse(t_stat < critical_value, 1, 0),
+           p_val = pt(t_stat, df = n - n_covariates - 2),
+           p_val_adjusted = p.adjust(p_val, method = "bonferroni"),
+           reject_H0_adjusted = ifelse(p_val_adjusted < 0.05, 1, 0))
   return(tau_transformed)
 }
 
 
 violates_monotonicity_check <- function(tau_hat_t_stat){
   violations <- tau_hat_t_stat %>% 
-    filter(reject_H0 == 1)
+    filter(reject_H0_adjusted == 1)
   if (nrow(violations) > 0){
     return(TRUE)
   } else {
@@ -110,7 +113,7 @@ minimum_tau_hat <- function(tau_hat_t_stat){
 find_number_of_defiers <- function(tau_hat_t_stat, tau){
   n_defiers_true <- sum(tau < 0)
   n_defiers_estimated <- sum(tau_hat_t_stat$predictions < 0)
-  n_significant_defiers <- sum(tau_hat_t_stat$reject_H0)
+  n_significant_defiers <- sum(tau_hat_t_stat$reject_H0_adjusted)
   df <- tibble(n_defiers_true, n_defiers_estimated, n_significant_defiers)
   return(df)
 }
@@ -161,15 +164,17 @@ run_defier_beta_simulations <- function(beta_defier, N, num.threads = NULL, verb
 
 Here we read in a csv containing simulated draws to save time.
 ```{r}
-# library(purrr)
+library(purrr)
 # tictoc::tic()
-defier_beta_binary_taus <- read.csv("beta_binary_taus.csv") %>% as_tibble()
 # defier_beta_binary_taus <- rep(seq(from = 0, to = -1.5, by = -0.1), 10) %>%
-#   map_df(., ~(run_defier_beta_simulations(N = 1000, verbose = FALSE, beta_defier = .) %>% 
+#   map_df(., ~(run_defier_beta_simulations(N = 1000, verbose = FALSE, beta_defier = .) %>%
 #            mutate(beta_defier = .x)))
 # tictoc::toc()
 # beepr::beep()
+# write.csv(defier_beta_binary_taus, file = "beta_binary_taus.csv", row.names = FALSE)
 
+
+defier_beta_binary_taus <- read.csv("beta_binary_taus.csv") %>% as_tibble()
 ```
 
 
@@ -216,12 +221,15 @@ run_defier_proportion_simulation <- function(prop_defier, N, num.threads = NULL,
 Again, loading cached data.
 ```{r}
 # tictoc::tic()
-defier_prop_binary_taus <- read.csv("defier_prop_binary_taus.csv")
 # defier_prop_binary_taus <- rep(seq(from = 0, to = 0.5, by = 0.01), 10) %>%
-#   map_df(., ~(run_defier_proportion_simulation(N = 1000, verbose = FALSE, prop_defier = .) %>% 
+#   map_df(., ~(run_defier_proportion_simulation(N = 1000, verbose = FALSE, prop_defier = .) %>%
 #            mutate(defier_proportion = .x)))
 # tictoc::toc()
 # beepr::beep()
+# write.csv(defier_prop_binary_taus, file = "defier_prop_binary_taus.csv", row.names = FALSE)
+
+
+defier_prop_binary_taus <- read.csv("defier_prop_binary_taus.csv")
 ```
 
 
