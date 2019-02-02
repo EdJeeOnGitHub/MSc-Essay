@@ -477,9 +477,10 @@ anonymous_tau_simulation <- function(dummy_arg, N = 1000, beta_complier, beta_de
     mutate(draw = dummy_arg)
 }
 
-many_tau_pvals <- 1:50 %>% 
-  map_df(anonymous_tau_simulation, N = 1000, beta_complier = 0, beta_defier = 0, prop_defier = 0.5)
-
+# many_tau_pvals <- 1:100 %>% 
+#   map_df(anonymous_tau_simulation, N = 1000, beta_complier = 0, beta_defier = 0, prop_defier = 0.5)
+many_tau_pvals <- read.csv("many_tau_pvals.csv") %>% 
+  as_tibble()
 many_tau_pvals <- many_tau_pvals %>% 
   mutate(two_pval = 2*pt(-abs(t_stat), df = 994 ),
          reject_H0_twosided = ifelse(two_pval < 0.05, 1, 0),
@@ -487,6 +488,7 @@ many_tau_pvals <- many_tau_pvals %>%
          reject_H0_onesided = ifelse(one_pval < 0.05, 1, 0))
 
 many_tau_pvals %>% 
+  filter(draw <= 20) %>% 
   ggplot(aes(x = two_pval)) +
   geom_histogram() +
   facet_wrap(~draw) +
@@ -494,6 +496,7 @@ many_tau_pvals %>%
 
 
 many_tau_pvals %>% 
+  filter(draw <= 20) %>% 
   ggplot(aes(x = one_pval)) +
   geom_histogram() +
   facet_wrap(~draw) +
@@ -547,8 +550,10 @@ Now Benjamini Hochberg correction for the false discovery rate:
 ```{r}
 corrected_tau_p_vals <- many_tau_pvals %>% 
   group_by(draw) %>% 
-  mutate(one_pval_adjusted = p.adjust(one_pval, method = "bonferroni"))
+  mutate(one_pval_adjusted = p.adjust(one_pval, method = "bonferroni"),
+         two_pval_adjusted = p.adjust(two_pval, method = "bonferroni"))
 corrected_tau_p_vals %>% 
+  filter(draw <= 20) %>% 
   ggplot(aes(x = one_pval_adjusted)) +
   geom_histogram() +
   facet_wrap(~draw)
@@ -557,15 +562,17 @@ corrected_tau_p_vals %>%
 ```{r}
 corrected_tau_p_vals %>% 
   group_by(draw) %>% 
-  summarise(rejected_H0 = sum(ifelse(one_pval_BH < 0.05, 1, 0)))
+  summarise(rejected_H0 = sum(ifelse(one_pval_adjusted < 0.05, 1, 0)))
   
 ```
 
 ```{r}
 corrected_tau_p_vals %>% 
   group_by(draw) %>% 
-  summarise(rejected_H0= sum(ifelse(one_pval_BH < 0.05, 1, 0))) %>% 
+  summarise(rejected_H0_one = sum(ifelse(one_pval_adjusted < 0.05, 1, 0)),
+            rejected_H0_two = sum(ifelse(two_pval_adjusted < 0.05, 1, 0))) %>% 
   ungroup() %>% 
-  summarise(FDR = sum(ifelse(rejected_H0 > 0, 1, 0))/ length(rejected_H0))
+  summarise(FDR_one = sum(ifelse(rejected_H0_one > 0, 1, 0))/ length(rejected_H0_one),
+            FDR_two = sum(ifelse(rejected_H0_two > 0, 1, 0)) / length(rejected_H0_two))
 ```
 
