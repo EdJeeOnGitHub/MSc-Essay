@@ -14,6 +14,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(haven)
 library(dplyr)
 library(tidylog, warn.conflicts = FALSE)
+library(broom)
 df_90 <- read_sas("AngEv98/AngEv98/m_d_903.sas7bdat")
 ```
 
@@ -41,9 +42,7 @@ df_90_clean <- df_90 %>%
 
 ```
 
-# Recreating Summary Stats
-
-
+# Replicating Results
 
 ```{r}
 df_90_subset <- df_90_clean %>% 
@@ -62,7 +61,6 @@ df_90_subset <- df_90_clean %>%
               "pobm",
               "hispd",
               "pobd",
-              "schoold",
               "hispk"), factor) %>% 
   mutate_if(is.character, as.numeric)
   
@@ -94,6 +92,8 @@ df_90_final <- df_90_subset %>%
 ```
 
 
+## Table Two Summary Statistics
+
 Trying to recreate table 2
 ```{r}
 library(tidyr)
@@ -118,6 +118,7 @@ df_90_final %>%
 
 ```
 
+## Regression Results
 
 Recreating Table 5
 ```{r, results="asis"}
@@ -160,7 +161,248 @@ stargazer(table_6_models, keep = "morekidsTRUE", title = "2SLS ESTIMATES OF LABO
 ```
 
 
+# Checking First Stage
 
+
+```{r}
+library(margins)
+x <- rnorm(100) + 3
+D <- rbinom(100, size = 1, 0.5)
+y <- D*5*x + (1-D)*-5*x + 10 + rnorm(100)
+df_sim <- tibble(y, x, D)
+lm(y ~ x, data = df_sim) %>% summary()
+D_yes <- lm(y ~ x, data = df_sim %>% filter(D == 1)) 
+D_no <- lm(y ~ x, data = df_sim %>% filter(D ==0)) 
+D_int <- lm(y ~ x  +D+ x*D, data = df_sim) 
+
+
+```
+
+```{r}
+D_yes %>% tidy()
+```
+
+```{r}
+D_no %>% tidy()
+```
+
+```{r}
+D_int %>% tidy()
+
+```
+
+
+```{r}
+D_int %>% 
+  tidy() %>% 
+  filter(term == "x" | term == "x:D") %>% 
+  summarise(est_diff = sum(estimate))
+```
+
+
+```{r}
+library(modelr)
+head(dydx(data = df_sim, D_int, "x"))
+
+
+df_sim_margsin <- df_sim %>% 
+  mutate(dydx_x = dydx(data = df_sim, D_int, "x", as.data.frame = TRUE)$dydx_x,
+         dydx_x_low = dydx_x  - 1.96*se_dydyx_x,
+         dydx_high = dydx_x + 1.96*se_dydyx_x)
+df_sim_margsin
+
+
+
+se_dydyx_x <- summary(margins(D_int)) %>% 
+  filter(factor == "x") %>% 
+  select(SE) %>% 
+  pull()
+```
+
+
+
+```{r}
+
+
+first_stage_regression <- df_90_final %>% 
+  select(morekids, samesex, black_m, black_d, m_age, fertil) %>% 
+  lm(formula = morekids ~ samesex*.)
+df_margins <- df_90_final %>% 
+  mutate(dydx_samesex = dydx(data = df_90_final, model = first_stage_regression, variable = "samesex")$dydx_samesex)
+df_margins %>% 
+  select(morekids, samesex, black_m, black_d, m_age, fertil, dydx_samesex) %>% 
+  filter(dydx_samesex < 0)
+
+
+margins(first_stage_regression)
+```
+
+```{r}
+
+library(Rfast)
+find_SEs <- function(model_data_no_y, model_vcov, instrument){
+  model_data_no_y <- model_data_no_y %>% 
+    rename("instrument" = instrument)
+  model_formula <- as.formula(paste0("~", "instrument", "*."))
+  
+  model_matrix <- model_data_no_y %>% 
+    mutate(instrument = 1) %>% 
+    model.matrix(model_formula, data = .)
+  
+  gradient_matrix_kinda <- model_matrix %>%
+    as_tibble() %>% 
+    distinct() %>% 
+  mutate_at(vars(-contains(":")), ~(. = 0)) %>% 
+    mutate(instrument = 1) %>% 
+  as.matrix()
+  
+  vcov_dydx_intermediate <- Rfast::mat.mult(gradient_matrix_kinda, model_vcov)
+  vcov_dydx <- Rfast::mat.mult(vcov_dydx_intermediate, Rfast::transpose(gradient_matrix_kinda))
+  SE_dydx <- sqrt(diag(vcov_dydx))
+  return(SE_dydx)
+    
+} 
+
+run_first_stage_interactions_slow <- function(dataset, dependent_variable, instrument){
+  dataset <- dataset %>% 
+    rename("instrument" = instrument)
+  model_formula <- as.formula(paste0(dependent_variable,  "~ ", "instrument", "*."))
+  first_stage_fit <- lm(data = dataset, formula = model_formula)
+  degrees_freedom <- first_stage_fit$df.residual
+  dydx_margins <- dydx(data = dataset,
+                       model = first_stage_fit,
+                       variable = "instrument") %>% pull()
+  dataset_unique <- dataset %>% 
+    select(-dependent_variable, -instrument) %>% 
+    distinct() %>% 
+    mutate(instrument = TRUE)
+  first_stage_margins <- margins(first_stage_fit, data = dataset_unique, variables = "instrument", unit_ses = TRUE) 
+  df_margins <- bind_cols(first_stage_margins %>% 
+                            select(contains("dydx")),
+                          dataset_unique) %>% 
+    as_tibble()
+  df_margins <- df_margins %>% 
+    mutate(dydx_lo = dydx_instrument - qt(0.975, degrees_freedom) * SE_dydx_instrument,
+           dydx_hi = dydx_instrument + qt(0.975, degrees_freedom) * SE_dydx_instrument,
+           t_stat = dydx_instrument/SE_dydx_instrument,
+           pval_one_neg = pt(t_stat, degrees_freedom))
+  return(df_margins)
+}
+
+
+run_first_stage_interactions_fast <- function(dataset, dependent_variable, instrument){
+  dataset <- dataset %>% 
+    rename("instrument" = instrument)
+  model_formula <- as.formula(paste0(dependent_variable,  "~ ", "instrument", "*."))
+  first_stage_fit <- lm(data = dataset, formula = model_formula)
+  degrees_freedom <- first_stage_fit$df.residual
+  dydx_margins <- dydx(data = dataset,
+                       model = first_stage_fit,
+                       variable = "instrument") %>% pull()
+  dataset_unique <- dataset %>% 
+    select(-dependent_variable, -instrument) %>% 
+    distinct() %>% 
+    mutate(instrument = TRUE)
+  first_stage_margins <- dydx(model = first_stage_fit, data = dataset_unique, variable = "instrument") 
+  df_margins <- bind_cols(first_stage_margins %>% 
+                            select(contains("dydx")),
+                          dataset_unique) %>% 
+    as_tibble()
+  df_margins$SE_dydx_instrument <- find_SEs(dataset_unique, vcov(first_stage_fit), instrument)
+  
+  df_margins <- df_margins %>% 
+    mutate(dydx_lo = dydx_instrument - qt(0.975, degrees_freedom) * SE_dydx_instrument,
+           dydx_hi = dydx_instrument + qt(0.975, degrees_freedom) * SE_dydx_instrument,
+           t_stat = dydx_instrument/SE_dydx_instrument,
+           pval_one_neg = pt(t_stat, degrees_freedom))
+  return(df_margins)
+}
+
+
+```
+
+
+
+```{r}
+
+
+test_data <- df_90_final %>% 
+  select(samesex,
+         morekids,
+         black_m,
+         hisp_m,
+         other_race_m,
+         black_d,
+         hisp_d,
+         other_race_d,
+         yearschm,
+         yearschd, 
+         m_age) %>% 
+  na.omit()
+
+# tictoc::tic()
+# first_stage_margins <- test_data %>% 
+#   run_first_stage_interactions(dataset = ., dependent_variable = "morekids", instrument = "samesex")
+# tictoc::toc()
+
+
+
+
+tictoc::tic()
+first_stage_interactions <- test_data %>% 
+  run_first_stage_interactions_two(dataset = .,
+                                   dependent_variable = "morekids",
+                                   instrument = "samesex")
+tictoc::toc()
+```
+
+
+```{r}
+library(ggplot2)
+first_stage_interactions %>% 
+  filter(pval_one_neg < 0.1)
+
+first_stage_interactions %>% 
+  ggplot(aes(x = dydx_instrument)) +
+  geom_histogram()
+
+first_stage_interactions %>% 
+  ggplot(aes(x = pval_one_neg)) +
+  geom_histogram()
+
+first_stage_interactions %>% 
+  arrange(dydx_instrument) %>% 
+  mutate(rank = row_number()) %>% 
+  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo, ymax = dydx_hi)) +
+  geom_point() +
+  geom_ribbon(alpha = 0.1)
+```
+
+```{r}
+ed_se <- sqrt(0.0010327299 + 0.0085070986 + -0.0010327299*2)
+ed_se
+ed_se_2 <- sqrt(0.0010327299)
+ed_se_2
+```
+
+
+
+```{r}
+first_stage_margins %>% 
+  filter(pval_one_neg < 0.05)
+```
+
+
+```{r}
+ff <- lm(morekids ~ samesex*black_m, data = df_90_final %>% sample_n(1000))
+fm <- margins(ff, variables = "samesex")
+fm$Var_dydx_samesex %>% unique()
+summary(fm)
+f_um <- margins(ff, variables = "samesex", unit_ses = TRUE)
+f_um$SE_dydx_samesex %>% unique()
+f_um$Var_dydx_samesex %>% unique()
+f_um$dydx_samesex %>% unique()
+```
 
 ## Random Forest
 
