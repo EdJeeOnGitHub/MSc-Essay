@@ -13,6 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 library(haven)
 library(dplyr)
+library(tidylog, warn.conflicts = FALSE)
 df_90 <- read_sas("AngEv98/AngEv98/m_d_903.sas7bdat")
 ```
 
@@ -24,19 +25,27 @@ df_90_clean <- df_90 %>%
   filter(KIDCOUNT >= 2) %>% 
   filter(AGE2NDK >= 1) %>% 
   filter(AAGE == "0" & AAGE2ND == "0" & ASEX == "0" & ASEX2ND == "0") %>% 
-  mutate(fertdif = as.numeric(KIDCOUNT) - (as.numeric(FERTIL) - 1),
+  mutate(SEXK = as.numeric(SEXK),
+         SEX2NDK = as.numeric(SEX2NDK),
+         WEEK89D = as.numeric(WEEK89D),
+         WEEK89M = as.numeric(WEEK89M),
+         FERTIL = as.numeric(FERTIL)) %>% 
+  mutate(fertdif = as.numeric(KIDCOUNT) - (FERTIL - 1),
          agefstm = as.numeric(AGEM) - as.numeric(AGEK)) %>% 
   filter(agefstm >= 15) %>% 
   filter(PWGTM1 > 0) %>% 
   mutate(samesex = (SEXK == SEX2NDK),
          morekids = (KIDCOUNT > 2)) %>% 
-  mutate(SEXK = as.numeric(SEXK),
-         SEX2NDK = as.numeric(SEX2NDK),
-         WEEK89D = as.numeric(WEEK89D),
-         WEEK89M = as.numeric(WEEK89M)) %>% 
   rename_all(tolower)
 
 
+```
+
+# Recreating Summary Stats
+
+
+
+```{r}
 df_90_subset <- df_90_clean %>% 
   rename(kid_age = agek,
          kid2_age = age2ndk,
@@ -47,13 +56,10 @@ df_90_subset <- df_90_clean %>%
               "birthplk",
               "schoolk",
               "state",
-              "racem",
-              "raced",
               "hispm",
               "hispd",
               "poverty",
               "pobm",
-              "schoolm",
               "hispd",
               "pobd",
               "schoold",
@@ -62,21 +68,97 @@ df_90_subset <- df_90_clean %>%
   
   
   
-df_90_subset %>% 
-  skimr::skim()
+df_90_final <- df_90_subset %>% 
+  mutate(boy1st = (sexk == 0),
+         boy2nd = (sex2ndk == 0),
+         boys2 = (sexk == 0) & (sex2ndk == 0),
+         girls2 = (sexk == 1) & (sex2ndk == 1),
+         samesex = boys2 | girls2,
+         morekids = kidcount > 2,
+         black_m = (racem == 2),
+         hisp_m = (racem == 12),
+         white_m = (racem == 01),
+         other_race_m = 1 - black_m - hisp_m - white_m,
+         black_d = (raced == 2),
+         hisp_d = (raced == 12),
+         white_d = (raced == 1),
+         other_race_d = 1 - black_d - hisp_d - white_d,
+         worked_m = (week89m > 0),
+         worked_d = (week89d > 0),
+         income_m = 1.2883*(incomem1 + pmax(0, incomem2)),
+         income_d = (incomed1 + pmax(0, incomed2)),
+         fam_inc = pmax(faminc*1.2883, 1),
+         nonmoi = fam_inc - incomem1*1.2883,
+         nonmomil = log(pmax(1, nonmoi)))
+
 ```
 
 
+Trying to recreate table 2
 ```{r}
 library(tidyr)
-df_90_prepared <- df_90_subset %>% 
-  drop_na() %>% 
-  filter_if(is.numeric, all_vars(. >=0)) %>% 
-  mutate(dummy_col = 1,
-         samesex = as.numeric(samesex),
-         morekids = as.numeric(morekids))
+df_90_final %>% 
+  summarise(children_ever_born = mean(fertil - 1),
+            more_than_2 = mean(morekids),
+            mean_boy_first = mean(boy1st),
+            boy_2nd = mean(boy2nd),
+            two_boys = mean(boys2),
+            two_girls = mean(girls2),
+            samesex = mean(samesex),
+            age = mean(m_age),
+            worked = mean(worked_m),
+            weeks = mean(week89m),
+            hrs_wk = mean(hour89m),
+            labour_income_mum = mean(income_m),
+            labour_income_dad = mean(income_d, na.rm = TRUE),
+            fam_income = mean(fam_inc),
+            mean_non_wife = mean(nonmoi)) %>% 
+  gather(term, mean) %>% 
+  knitr::kable(digits = 3)
 
 ```
+
+
+Recreating Table 5
+```{r, results="asis"}
+library(AER)
+library(stargazer)
+worked_90 <- ivreg(worked_m ~ morekids | samesex, data = df_90_final)
+weeks_90 <- ivreg(week89m ~ morekids | samesex, data = df_90_final) 
+hours_90 <- ivreg(hour89m ~ morekids | samesex, data = df_90_final) 
+income_90 <- ivreg(income_m ~ morekids | samesex, data = df_90_final) 
+fam_income_90 <- ivreg(log(fam_inc) ~ morekids | samesex, data = df_90_final)
+
+stargazer(worked_90,
+          weeks_90,
+          hours_90,
+          income_90,
+          fam_income_90,
+          omit = "Constant",
+          title = "WALD ESTIMATES OF LABOR-SUPPLY MODELS 1990 DATA - REPLICATED")
+```
+
+
+
+Now table 6
+```{r, results = "asis"}
+library(purrr)
+create_model_formula <- function(dependent_var){
+  model <- as.formula(paste0(dependent_var, "~ morekids + m_age + boy1st + boy2nd + black_m + hisp_m + other_race_m | samesex +  m_age + boy1st + boy2nd + black_m + hisp_m + other_race_m"))
+  return(model)
+}
+
+table_6_models <- c("worked_m",
+                    "week89m",
+                    "hour89m",
+                    "income_m",
+                    "log(fam_inc)") %>% 
+  map(~(create_model_formula(.) %>% 
+          ivreg(data = df_90_final)))
+
+stargazer(table_6_models, keep = "morekidsTRUE", title = "2SLS ESTIMATES OF LABOR-SUPPLY MODELS USING 1990 CENSUS DATA - REPLICATION", note = "Age at first birth omitted since I can't seem to find it.")
+```
+
 
 
 
