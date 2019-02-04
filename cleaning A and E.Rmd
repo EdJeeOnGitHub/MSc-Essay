@@ -178,30 +178,8 @@ D_int <- lm(y ~ x  +D+ x*D, data = df_sim)
 
 ```
 
-```{r}
-D_yes %>% tidy()
-```
 
 ```{r}
-D_no %>% tidy()
-```
-
-```{r}
-D_int %>% tidy()
-
-```
-
-
-```{r}
-D_int %>% 
-  tidy() %>% 
-  filter(term == "x" | term == "x:D") %>% 
-  summarise(est_diff = sum(estimate))
-```
-
-
-```{r}
-library(modelr)
 head(dydx(data = df_sim, D_int, "x"))
 
 
@@ -221,21 +199,7 @@ se_dydyx_x <- summary(margins(D_int)) %>%
 
 
 
-```{r}
 
-
-first_stage_regression <- df_90_final %>% 
-  select(morekids, samesex, black_m, black_d, m_age, fertil) %>% 
-  lm(formula = morekids ~ samesex*.)
-df_margins <- df_90_final %>% 
-  mutate(dydx_samesex = dydx(data = df_90_final, model = first_stage_regression, variable = "samesex")$dydx_samesex)
-df_margins %>% 
-  select(morekids, samesex, black_m, black_d, m_age, fertil, dydx_samesex) %>% 
-  filter(dydx_samesex < 0)
-
-
-margins(first_stage_regression)
-```
 
 ```{r}
 
@@ -350,7 +314,7 @@ test_data <- df_90_final %>%
 
 tictoc::tic()
 first_stage_interactions <- test_data %>% 
-  run_first_stage_interactions_two(dataset = .,
+  run_first_stage_interactions_fast(dataset = .,
                                    dependent_variable = "morekids",
                                    instrument = "samesex")
 tictoc::toc()
@@ -378,31 +342,8 @@ first_stage_interactions %>%
   geom_ribbon(alpha = 0.1)
 ```
 
-```{r}
-ed_se <- sqrt(0.0010327299 + 0.0085070986 + -0.0010327299*2)
-ed_se
-ed_se_2 <- sqrt(0.0010327299)
-ed_se_2
-```
 
 
-
-```{r}
-first_stage_margins %>% 
-  filter(pval_one_neg < 0.05)
-```
-
-
-```{r}
-ff <- lm(morekids ~ samesex*black_m, data = df_90_final %>% sample_n(1000))
-fm <- margins(ff, variables = "samesex")
-fm$Var_dydx_samesex %>% unique()
-summary(fm)
-f_um <- margins(ff, variables = "samesex", unit_ses = TRUE)
-f_um$SE_dydx_samesex %>% unique()
-f_um$Var_dydx_samesex %>% unique()
-f_um$dydx_samesex %>% unique()
-```
 
 ## Random Forest
 
