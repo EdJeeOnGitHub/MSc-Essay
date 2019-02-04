@@ -183,18 +183,12 @@ D_int <- lm(y ~ x  +D+ x*D, data = df_sim)
 head(dydx(data = df_sim, D_int, "x"))
 
 
-df_sim_margsin <- df_sim %>% 
-  mutate(dydx_x = dydx(data = df_sim, D_int, "x", as.data.frame = TRUE)$dydx_x,
-         dydx_x_low = dydx_x  - 1.96*se_dydyx_x,
-         dydx_high = dydx_x + 1.96*se_dydyx_x)
-df_sim_margsin
-
-
-
-se_dydyx_x <- summary(margins(D_int)) %>% 
-  filter(factor == "x") %>% 
-  select(SE) %>% 
-  pull()
+df_sim_margins <- margins(data = df_sim, D_int, "x", unit_ses = TRUE) %>% 
+  as_tibble() %>% 
+  mutate(dydx_x_low = dydx_x  - 1.96*SE_dydx_x,
+         dydx_high = dydx_x + 1.96*SE_dydx_x)
+  
+df_sim_margins %>% head()
 ```
 
 
@@ -203,6 +197,7 @@ se_dydyx_x <- summary(margins(D_int)) %>%
 
 ```{r}
 
+##TODO: Propagate dydx to entire dataset?
 library(Rfast)
 find_SEs <- function(model_data_no_y, model_vcov, instrument){
   model_data_no_y <- model_data_no_y %>% 
@@ -323,6 +318,7 @@ tictoc::toc()
 
 ```{r}
 library(ggplot2)
+library(scales)
 first_stage_interactions %>% 
   filter(pval_one_neg < 0.1)
 
@@ -340,12 +336,36 @@ first_stage_interactions %>%
   ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo, ymax = dydx_hi)) +
   geom_point() +
   geom_ribbon(alpha = 0.1)
+
+negative_log_trans <- function(base = exp(1)) {
+    trans <- function(x) -log(x, base)
+    inv <- function(x) base^(-x)
+    trans_new(paste0("negative_log-", format(base)), trans, inv, 
+              log_breaks(base = base), 
+              domain = c(1e-100, Inf))
+}
+
+
+first_stage_interactions %>% 
+  ggplot(aes(sample = pval_one_neg)) +
+  stat_qq(distribution = qunif) +
+  geom_abline(intercept = 0, slope = 1) +
+  theme_minimal() +
+  scale_x_continuous(trans=negative_log_trans(10)) +
+  scale_y_continuous(trans=negative_log_trans(10)) +
+  labs(title = "QQ plot of P-values First Stage Interactions",
+       subtitle = "Negative Log(10) Scale")
+
+
+
+
+
 ```
 
 
 
 
-## Random Forest
+# Random Forest
 
 
 ```{r}
@@ -487,17 +507,5 @@ lm(morekids ~ samesex, data = df_90_clean) %>% summary()
 
 ```{r}
 lm(morekids ~ sexk + sex2ndk + samesex + agem,  data =  df_90_clean) %>% summary()
-```
-
-
-
-```{r}
-agem agek age2ndk marital kidcount racem;
-
-proc reg;
- model morekids=samesex;
-
-run;
-
 ```
 
