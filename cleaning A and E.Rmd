@@ -533,7 +533,6 @@ first_stage_interactions %>%
 
 ```{r random_forest_run}
 library(grf)
-library(modelr)
 N_obs <- 10000
 df_rf <- test_data %>% 
   sample_n(N_obs)
