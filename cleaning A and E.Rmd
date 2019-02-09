@@ -16,7 +16,9 @@ knitr::opts_chunk$set(echo = TRUE,
                       cache = TRUE)
 ```
 
-# Importing and cleaning 1990 Census Data
+# Importing and cleaning Data
+## Angrist and Evans 1998
+### 1990 Census Data
 ```{r data_import}
 library(haven)
 library(dplyr)
@@ -54,6 +56,124 @@ df_90_clean <- df_90 %>%
 
 rm(df_90)
 ```
+
+### 1980 Census Data
+
+
+```{r cleaning_1980}
+
+df_80 <- read_sas("AngEv98/AngEv98/m_d_806.sas7bdat")
+
+df_80_clean <- df_80 %>%
+    mutate(SEXK = as.numeric(SEXK),
+         SEX2ND = as.numeric(SEX2ND),
+         WEEKSD = as.numeric(WEEKSD),
+         WEEKSM = as.numeric(WEEKSM),
+         YOBM = as.numeric(YOBM),
+         AGEQK = as.numeric(AGEQK),
+         YOBD = 80 - as.numeric(AGED),
+         YOBD = ifelse(QTRBTHD == 0, YOBD, YOBD - 1)) %>% 
+  mutate(samesex = (SEXK == SEX2ND),
+         morekids = (KIDCOUNT > 2),
+         ageqm = 4*(80-YOBM) - as.numeric(QTRBTHM) - 1,
+         ageqd = 4*(80 - YOBD) - as.numeric(QTRBKID),
+         agefstm = round((ageqm-AGEQK)/4),
+         agefstd = round((ageqd - AGEQK)/4),
+         QTRMAR = as.numeric(QTRMAR),
+         QTRBTHM = as.numeric(QTRBTHM),
+         AGEMAR = as.numeric(AGEMAR),
+         QTRBKID = as.numeric(QTRBKID),
+         FERTIL = as.numeric(FERT),
+         ) %>% 
+  rename_all(tolower)
+
+
+
+
+df_80_filtered <- df_80_clean %>% 
+  filter((agem <= 35) & (agem >= 21)) %>% 
+  filter(kidcount >= 2) %>%
+  filter(ageq2nd > 4) %>% 
+  filter(agefstm >= 15) %>%
+  filter(agefstd >= 15 | is.na(agefstd)) %>%
+  filter(asex == 0 &
+         aage == 0 & 
+         aqtrbrth == 0 &
+         asex2nd == 0 &
+         aage2nd == 0 &
+         aqtrbrth == 0)
+
+
+
+df_80_filtered_two <- df_80_filtered %>% 
+  mutate(
+         qtrmar = ifelse(qtrmar > 0, qtrmar - 1, qtrmar),
+         yom = ifelse(qtrbthm <= qtrmar, yobm + agemar, yobm+agemar+1),
+         dom_q = yom + (qtrmar/4),
+         do1b_q = yobk + qtrbkid/4,
+         illegit = ifelse(dom_q - do1b_q > 0, 1, 0)
+         ) %>%  
+  mutate(
+         msample = ifelse(
+           !is.na(aged) &
+           timesmar == 1 &
+           marital == 0 &
+           illegit == 0 &
+           agefstd >= 15 &
+           agefstm >= 15,
+           1, 0)
+         ) %>% 
+  filter(msample == 1)
+
+######################
+
+df_80_subset <- df_80_filtered_two %>% 
+  rename(kid_age = agek,
+         m_age = agem,
+         d_age = aged) %>% 
+  select(-starts_with("a")) %>% 
+  mutate_at(c("racek",
+              "birthplk",
+              "schoolk",
+              "state",
+              "spanishm",
+              "spanishd",
+              "poverty"), factor) %>% 
+  mutate_if(is.character, as.numeric)
+
+
+
+df_80_final <- df_80_subset %>% 
+  mutate(boy1st = (sexk == 0),
+         boy2nd = (sex2nd == 0),
+         boys2 = (sexk == 0) & (sex2nd == 0),
+         girls2 = (sexk == 1) & (sex2nd == 1),
+         samesex = boys2 | girls2,
+         morekids = kidcount > 2,
+         black_m = (racem == 2),
+         hisp_m = (racem == 12),
+         white_m = (racem == 01),
+         other_race_m = 1 - black_m - hisp_m - white_m,
+         black_d = (raced == 2),
+         hisp_d = (raced == 12),
+         white_d = (raced == 1),
+         other_race_d = 1 - black_d - hisp_d - white_d,
+         worked_m = (weeksm > 0),
+         worked_d = (weeksd > 0),
+         income_m = 2.099173554*(income1m + pmax(0, income2m)),
+         income_d = (income1d + pmax(0, income2d)),
+         fam_inc = pmax(faminc*2.099173554, 1),
+         nonmoi = fam_inc - income1m*2.099173554,
+         nonmomil = log(pmax(1, nonmoi)))
+# rm(df_80,
+#    df_80_clean,
+#    df_80_filtered,
+#    df_80_filtered_two,
+#    df_80_subset)
+
+```
+
+
 
 # Replicating Results
 
@@ -128,7 +248,7 @@ rm(df_90_clean, df_90_subset)
 Trying to recreate table 2
 ```{r table_2}
 library(tidyr)
-df_90_final %>% 
+AE_90_summary <- df_90_final %>% 
   summarise(children_ever_born = mean(fertil - 1),
             more_than_2 = mean(morekids),
             mean_boy_first = mean(boy1st),
@@ -144,8 +264,29 @@ df_90_final %>%
             labour_income_dad = mean(income_d, na.rm = TRUE),
             fam_income = mean(fam_inc),
             mean_non_wife = mean(nonmoi)) %>% 
-  gather(term, mean) %>% 
+  gather(term, mean_90) 
+
+AE_80_summary <- df_80_final %>% 
+    summarise(children_ever_born = mean(fertil - 1),
+            more_than_2 = mean(morekids),
+            mean_boy_first = mean(boy1st),
+            boy_2nd = mean(boy2nd),
+            two_boys = mean(boys2),
+            two_girls = mean(girls2),
+            samesex = mean(samesex),
+            age = mean(m_age),
+            worked = mean(worked_m),
+            weeks = mean(weeksm),
+            hrs_wk = mean(hoursm),
+            labour_income_mum = mean(income_m),
+            labour_income_dad = mean(income_d, na.rm = TRUE),
+            fam_income = mean(fam_inc),
+            mean_non_wife = mean(nonmoi)) %>% 
+  gather(term, mean_80) 
+
+AE_summary <- inner_join(AE_80_summary, AE_90_summary, by = "term") %>% 
   knitr::kable(digits = 3)
+AE_summary
 
 ```
 
@@ -155,17 +296,37 @@ Recreating Table 5
 ```{r table_5, results = "asis"}
 library(AER)
 library(stargazer)
-worked_90 <- ivreg(worked_m ~ morekids | samesex, data = df_90_final)
-weeks_90 <- ivreg(week89m ~ morekids | samesex, data = df_90_final) 
-hours_90 <- ivreg(hour89m ~ morekids | samesex, data = df_90_final) 
-income_90 <- ivreg(income_m ~ morekids | samesex, data = df_90_final) 
-fam_income_90 <- ivreg(log(fam_inc) ~ morekids | samesex, data = df_90_final)
+library(purrr)
+table_5_models_90 <- c("worked_m",
+  "week89m",
+  "hour89m",
+  "income_m",
+  "log(fam_inc)") %>%
+  map(~(
+  paste0(., " ~ morekids | samesex") %>% 
+  as.formula() %>% 
+  ivreg(., data = df_90_final)))
 
-stargazer(worked_90,
-          weeks_90,
-          hours_90,
-          income_90,
-          fam_income_90,
+table_5_models_80 <- c("worked_m",
+  "weeksm",
+  "hoursm",
+  "income_m",
+  "log(fam_inc)") %>% 
+  map(~(
+  paste0(., " ~ morekids | samesex") %>% 
+  as.formula() %>% 
+  ivreg(., data = df_80_final)))
+
+stargazer(table_5_models_80,
+          omit = "Constant",
+          title = "WALD ESTIMATES OF LABOR-SUPPLY MODELS 1980 DATA - REPLICATED",header = FALSE,type = "html",
+          dep.var.labels = c("Worked",
+                            "Weeks",
+                            "Hours",
+                            "Income",
+                            "Family Income"))
+
+stargazer(table_5_models_90,
           omit = "Constant",
           title = "WALD ESTIMATES OF LABOR-SUPPLY MODELS 1990 DATA - REPLICATED",header = FALSE,type = "html",
           dep.var.labels = c("Worked",
@@ -175,12 +336,12 @@ stargazer(worked_90,
                             "Family Income"))
 
 
-rm(worked_90,
-   weeks_90,
-   hours_90,
-   income_90,
-   fam_income_90)
-```
+
+
+
+rm(table_5_models_80,
+   table_5_models_90)
+``` 
 
 
 
@@ -192,7 +353,16 @@ create_model_formula <- function(dependent_var){
   return(model)
 }
 
-table_6_models <- c("worked_m",
+table_6_models_80 <- c("worked_m",
+  "weeksm",
+  "hoursm",
+  "income_m",
+  "log(fam_inc)") %>% 
+  map(~(create_model_formula(.) %>% 
+          ivreg(data = df_80_final)))
+  
+
+table_6_models_90 <- c("worked_m",
                     "week89m",
                     "hour89m",
                     "income_m",
@@ -200,21 +370,32 @@ table_6_models <- c("worked_m",
   map(~(create_model_formula(.) %>% 
           ivreg(data = df_90_final)))
 
-stargazer(table_6_models, keep = "morekidsTRUE",
-          title = "2SLS ESTIMATES OF LABOR-SUPPLY MODELS USING 1990 CENSUS DATA - REPLICATION",
-          note = "Age at first birth omitted since I can't seem to find it.",
+stargazer(table_6_models_80,
+          keep = "morekidsTRUE",
+          title = "2SLS ESTIMATES OF LABOR-SUPPLY MODELS USING 1980 CENSUS DATA - REPLICATION",
+          notes = "Age at first birth omitted since I can't seem to find it.",
           dep.var.labels = c("Worked",
                             "Weeks",
                             "Hours",
                             "Income",
                             "Family Income"),
           type = "html")
-rm(table_6_models)
+
+stargazer(table_6_models_90, keep = "morekidsTRUE",
+          title = "2SLS ESTIMATES OF LABOR-SUPPLY MODELS USING 1990 CENSUS DATA - REPLICATION",
+          notes = "Age at first birth omitted since I can't seem to find it.",
+          dep.var.labels = c("Worked",
+                            "Weeks",
+                            "Hours",
+                            "Income",
+                            "Family Income"),
+          type = "html")
+rm(table_6_models_80, table_6_models_90)
 ```
 
 
 # Checking First Stage
-
+## Simulations
 
 ```{r first_stage_sims}
 library(margins)
@@ -227,10 +408,6 @@ D_yes <- lm(y ~ x, data = df_sim %>% filter(D == 1))
 D_no <- lm(y ~ x, data = df_sim %>% filter(D ==0)) 
 D_int <- lm(y ~ x  +D+ x*D, data = df_sim) 
 
-```
-
-
-```{r first_stage_sim_results}
 head(dydx(data = df_sim, D_int, "x"))
 
 
@@ -248,8 +425,8 @@ rm(x,
    D_no,
    D_int,
    df_sim_margins)
-```
 
+```
 
 
 
@@ -337,8 +514,24 @@ run_first_stage_interactions_fast <- function(dataset, dependent_variable, instr
 
 ```{r run_first_stage_AE}
 
+AE_data_80 <- df_80_final %>% 
+  select(
+    samesex,
+    morekids,
+    black_m,
+    hisp_m,
+    other_race_m,
+    black_d,
+    hisp_d,
+    other_race_d,
+    gradem,
+    graded,
+    m_age,
+    d_age
+  ) %>% 
+  na.omit()
 
-test_data <- df_90_final %>% 
+AE_data_90 <- df_90_final %>% 
   select(samesex,
          morekids,
          black_m,
@@ -355,20 +548,25 @@ test_data <- df_90_final %>%
          pwgtd1) %>% 
   na.omit()
 
-# tictoc::tic()
-# first_stage_margins <- test_data %>% 
-#   run_first_stage_interactions(dataset = ., dependent_variable = "morekids", instrument = "samesex")
-# tictoc::toc()
 
 
 
-tictoc::tic()
-first_stage_interactions <- test_data %>% 
+
+first_stage_interactions_80 <- AE_data_80 %>% 
+  run_first_stage_interactions_fast(dataset = .,
+                                    dependent_variable = "morekids",
+                                    instrument = "samesex") %>% 
+  mutate(dataset = "1980") %>% 
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm,  dataset, dydx_lo, dydx_hi)
+first_stage_interactions_90 <- AE_data_90 %>% 
   run_first_stage_interactions_fast(dataset = .,
                                    dependent_variable = "morekids",
-                                   instrument = "samesex")
+                                   instrument = "samesex") %>% 
+  mutate(dataset = "1990") %>% 
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm, dataset, dydx_lo, dydx_hi)
 
-tictoc::toc()
+first_stage_interactions <- bind_rows(first_stage_interactions_90, first_stage_interactions_80) 
+
 
 
 
@@ -475,21 +673,25 @@ first_stage_interactions %>%
   filter(pval_one_neg < 0.1 | pval_holm < 0.1)
 
 first_stage_interactions %>% 
-  ggplot(aes(x = dydx_instrument)) +
-  geom_histogram()
+  ggplot(aes(x = dydx_instrument, fill = dataset)) +
+  geom_histogram() +
+  facet_wrap(~dataset)
 
 first_stage_interactions %>% 
-  ggplot(aes(x = pval_one_neg)) +
-  geom_histogram()
+  ggplot(aes(x = pval_one_neg, fill = dataset)) +
+  geom_histogram() +
+  facet_wrap(~dataset)
 
 first_stage_interactions %>% 
+  group_by(dataset) %>% 
   sample_frac(0.25) %>% 
   arrange(dydx_instrument) %>% 
   mutate(rank = row_number()) %>% 
-  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo, ymax = dydx_hi)) +
+  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo, ymax = dydx_hi, colour = dataset)) +
   geom_point() +
   geom_ribbon(alpha = 0.1) +
-  theme_minimal()
+  theme_minimal() +
+  facet_wrap(~dataset)
 
 
 
@@ -509,6 +711,7 @@ negative_log_trans <- function(base = exp(1)) {
 
 
 first_stage_interactions %>% 
+  group_by(dataset) %>% 
   sample_frac(0.25) %>% 
   ggplot(aes(sample = pval_one_neg)) +
   stat_qq(distribution = qunif) +
@@ -517,7 +720,8 @@ first_stage_interactions %>%
   scale_x_continuous(trans=negative_log_trans(10)) +
   scale_y_continuous(trans=negative_log_trans(10)) +
   labs(title = "QQ plot of P-values First Stage Interactions",
-       subtitle = "Negative Log(10) Scale")
+       subtitle = "Negative Log(10) Scale") +
+  facet_wrap(~dataset)
 
 
 
