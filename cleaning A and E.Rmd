@@ -689,11 +689,11 @@ find_SEs <- function(model_data_no_y, model_vcov, instrument){
   return(SE_dydx)
     
 } 
-run_first_stage_interactions_fast <- function(dataset, dependent_variable, instrument){
+run_first_stage_interactions_fast <- function(dataset, dependent_variable, instrument, weights = NULL){
   dataset <- dataset %>% 
     rename("instrument" = instrument)
   model_formula <- as.formula(paste0(dependent_variable,  "~ ", "instrument", "*."))
-  first_stage_fit <- lm(data = dataset, formula = model_formula)
+  first_stage_fit <- lm(data = dataset, formula = model_formula, weights = weights)
   degrees_freedom <- first_stage_fit$df.residual
   instrument_dummy_val <- dataset$instrument[1]
   
@@ -1011,6 +1011,68 @@ first_stage_interactions_maimonides %>%
   geom_hline(yintercept = 0.05, linetype = "longdash", alpha = 0.2)
 
 
+```
+
+## Autor Dorn Hansen
+
+```{r adh_fs}
+df_china <- read_dta("Autor Dorn Hansen/dta/workfile_china.dta")
+first_stage_interactions_ADH_manu <- df_china %>% 
+  select(d_sh_empl_mfg,
+         d_tradeusch_pw,
+         d_tradeotch_pw_lag,
+         l_shind_manuf_cbp,
+         starts_with("reg"),
+         l_sh_popedu_c,
+         l_sh_popfborn,
+         l_sh_empl_f,
+         l_sh_routine33,
+         l_task_outsource,
+         t2) %>% 
+  run_first_stage_interactions_fast(dataset = .,
+                                    dependent_variable = "d_tradeusch_pw",
+                                    instrument = "d_tradeotch_pw_lag",
+                                    weights = df_china$timepwt48) %>% 
+  mutate(dataset = "only")
+
+
+```
+
+
+
+```{r ADH_plot}
+first_stage_interactions_ADH_manu %>% nrow()
+
+first_stage_interactions_ADH_manu %>% 
+  filter(pval_holm < 0.05)
+
+first_stage_interactions_ADH_manu %>% 
+  ggplot(aes(x = dydx_instrument, fill = dataset)) +
+  geom_histogram() 
+
+first_stage_interactions_ADH_manu %>% 
+  ggplot(aes(x = pval_one_neg, fill = dataset)) +
+  geom_histogram() 
+
+first_stage_interactions_ADH_manu %>% 
+  arrange(dydx_instrument) %>% 
+  mutate(rank = row_number()) %>% 
+  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo, ymax = dydx_hi)) +
+  geom_point(aes(colour = dataset)) +
+  geom_ribbon(alpha = 0.2) +
+  theme_minimal() +
+  geom_hline(yintercept = 0, linetype = "longdash")
+
+first_stage_interactions_ADH_manu %>% 
+  ggplot(aes(sample = pval_one_neg, colour = dataset)) +
+  stat_qq(distribution = qunif) +
+  geom_abline(intercept = 0, slope = 1) +
+  theme_minimal() +
+  scale_x_continuous(trans=negative_log_trans(10)) +
+  scale_y_continuous(trans=negative_log_trans(10)) +
+  labs(title = "QQ plot of P-values First Stage Interactions",
+       subtitle = "Negative Log(10) Scale") +
+  geom_hline(yintercept = 0.05, linetype = "longdash", alpha = 0.2)
 ```
 
 
