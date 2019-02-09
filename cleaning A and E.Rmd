@@ -830,15 +830,3 @@ tau_hat_results %>%
 
 
 
-
-## Classification
-
-
-```{r, eval = FALSE}
-k_m <- kmeans(test_data, 10, nstart = 20)
-k_m$cluster <- as.factor(k_m$cluster)
-
-ggplot(test_data, aes(x = m_age, y = morekids, colour = k_m$cluster)) +
-  geom_point()
-```
-
