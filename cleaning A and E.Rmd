@@ -710,10 +710,10 @@ negative_log_trans <- function(base = exp(1)) {
 }
 
 
-first_stage_interactions %>% 
+first_stage_interactions_AE %>% 
   group_by(dataset) %>% 
-  sample_frac(0.25) %>% 
-  ggplot(aes(sample = pval_one_neg)) +
+  sample_n(10000) %>% 
+  ggplot(aes(sample = pval_one_neg, colour = dataset)) +
   stat_qq(distribution = qunif) +
   geom_abline(intercept = 0, slope = 1) +
   theme_minimal() +
@@ -721,7 +721,8 @@ first_stage_interactions %>%
   scale_y_continuous(trans=negative_log_trans(10)) +
   labs(title = "QQ plot of P-values First Stage Interactions",
        subtitle = "Negative Log(10) Scale") +
-  facet_wrap(~dataset)
+  facet_wrap(~dataset) +
+  geom_hline(yintercept = 0.05, linetype = "longdash", alpha = 0.2)
 
 
 
@@ -738,28 +739,55 @@ first_stage_interactions %>%
 ```{r random_forest_run}
 library(grf)
 N_obs <- 10000
-df_rf <- test_data %>% 
+df_rf_AE_80 <- AE_data_80 %>% 
   sample_n(N_obs)
 
-X_matrix <- df_rf %>% 
+X_matrix_AE_80 <- df_rf_AE_80 %>% 
   select(-samesex, -morekids) %>% 
   as.matrix()
 
-forest_first_stage <- causal_forest(X = X_matrix,
-                                    Y = df_rf$morekids,
-                                    W = df_rf$samesex,
+forest_first_stage_AE_80 <- causal_forest(X = X_matrix_AE_80,
+                                    Y = df_rf_AE_80$morekids,
+                                    W = df_rf_AE_80$samesex,
                                     num.trees = 4000) 
-tau_hat_oob <- predict(forest_first_stage, estimate.variance = TRUE) %>% as_tibble()
+tau_hat_oob_AE_80 <- predict(forest_first_stage_AE_80, estimate.variance = TRUE) %>%
+  as_tibble() %>% 
+  mutate(dataset = "1980")
+
+## Now 90s
+
+df_rf_AE_90 <- AE_data_90 %>% 
+  sample_n(N_obs)
+
+X_matrix_AE_90 <- df_rf_AE_90 %>% 
+  select(-samesex, -morekids) %>% 
+  as.matrix()
+
+forest_first_stage_AE_90 <- causal_forest(X = X_matrix_AE_90,
+                                          Y = df_rf_AE_90$morekids,
+                                          W = df_rf_AE_80$samesex,
+                                          num.trees = 4000)
+tau_hat_oob_AE_90 <- predict(forest_first_stage_AE_90, estimate.variance = TRUE) %>% 
+  as_tibble() %>% 
+  mutate(dataset = "1990")
+
+tau_hat_oob_AE <- bind_rows(tau_hat_oob_AE_90,
+                            tau_hat_oob_AE_80)
+
 
 ```
 
 ```{r random_forest_plots}
 
 
-ggplot(tau_hat_oob, aes(x = predictions)) +
-  geom_histogram()
+ggplot(tau_hat_oob_AE,
+       aes(x = predictions,
+           fill = dataset)) +
+  geom_histogram() +
+  facet_wrap(~dataset)
 
-tau_hat_results <- tau_hat_oob %>% 
+tau_hat_results <- tau_hat_oob_AE %>%
+  group_by(dataset) %>% 
   arrange(predictions) %>% 
   mutate(sigma_hat = sqrt(variance.estimates),
          prediction_lo = predictions - 1.96*sigma_hat,
@@ -768,29 +796,32 @@ tau_hat_results <- tau_hat_oob %>%
          critical_value = qt(0.95, N_obs - 13, lower.tail = FALSE),
          pval = pt(t_stat, df = N_obs - 13),
          pval_holm = p.adjust(pval, method = "holm"),
-         reject_H0 = ifelse(pval_holm < 0.1, 1, 0),
+         reject_H0 = ifelse(pval_holm < 0.05, 1, 0),
          rank = row_number())
 
 tau_hat_results %>% 
   ggplot(aes(x = rank, y = predictions, ymin = prediction_lo, ymax = prediction_hi)) + 
-  geom_point(aes(colour = factor(reject_H0))) +
+  geom_point(aes(colour = dataset)) +
   geom_ribbon(alpha = 0.1) +
   theme_minimal() +
-  geom_hline(yintercept = 0, linetype = "longdash")
+  geom_hline(yintercept = 0, linetype = "longdash") +
+  facet_wrap(~dataset) 
 
 tau_hat_results %>% 
   filter(reject_H0 == 1) 
 
 
 tau_hat_results %>% 
-  ggplot(aes(sample = pval)) +
+  ggplot(aes(sample = pval, colour = dataset)) +
   stat_qq(distribution = qunif)  +
   geom_abline(intercept = 0, slope = 1) +
   theme_minimal() +
   scale_x_continuous(trans=negative_log_trans(10)) +
   scale_y_continuous(trans=negative_log_trans(10)) +
+  geom_hline(yintercept = 0.05, linetype = "longdash", alpha = 0.2) +
   labs(title = "QQ plot of P-values",
-       subtitle = "Negative Log(10) Scale")
+       subtitle = "Negative Log(10) Scale") +
+  facet_wrap(~dataset)
   
 ```
 
