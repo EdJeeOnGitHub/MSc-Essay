@@ -165,11 +165,11 @@ df_80_final <- df_80_subset %>%
          fam_inc = pmax(faminc*2.099173554, 1),
          nonmoi = fam_inc - income1m*2.099173554,
          nonmomil = log(pmax(1, nonmoi)))
-# rm(df_80,
-#    df_80_clean,
-#    df_80_filtered,
-#    df_80_filtered_two,
-#    df_80_subset)
+rm(df_80,
+   df_80_clean,
+   df_80_filtered,
+   df_80_filtered_two,
+   df_80_subset)
 
 ```
 
@@ -565,8 +565,7 @@ first_stage_interactions_90 <- AE_data_90 %>%
   mutate(dataset = "1990") %>% 
   select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm, dataset, dydx_lo, dydx_hi)
 
-first_stage_interactions <- bind_rows(first_stage_interactions_90, first_stage_interactions_80) 
-
+first_stage_interactions_AE <- bind_rows(first_stage_interactions_90, first_stage_interactions_80) 
 
 
 
@@ -669,29 +668,30 @@ all_equal(first_stage_interactions, test)
 ```{r plotting_first_stage_interactions}
 library(ggplot2)
 library(scales)
-first_stage_interactions %>% 
+first_stage_interactions_AE %>% 
   filter(pval_one_neg < 0.1 | pval_holm < 0.1)
 
-first_stage_interactions %>% 
+first_stage_interactions_AE %>% 
   ggplot(aes(x = dydx_instrument, fill = dataset)) +
   geom_histogram() +
-  facet_wrap(~dataset)
+  facet_wrap(~dataset, scales = "free")
 
-first_stage_interactions %>% 
+first_stage_interactions_AE %>% 
   ggplot(aes(x = pval_one_neg, fill = dataset)) +
   geom_histogram() +
-  facet_wrap(~dataset)
+  facet_wrap(~dataset, scales = "free")
 
-first_stage_interactions %>% 
+first_stage_interactions_AE %>% 
   group_by(dataset) %>% 
-  sample_frac(0.25) %>% 
+  sample_n(10000) %>% 
   arrange(dydx_instrument) %>% 
   mutate(rank = row_number()) %>% 
-  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo, ymax = dydx_hi, colour = dataset)) +
-  geom_point() +
-  geom_ribbon(alpha = 0.1) +
+  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo, ymax = dydx_hi)) +
+  geom_point(aes(colour = dataset)) +
+  geom_ribbon(alpha = 0.2) +
   theme_minimal() +
-  facet_wrap(~dataset)
+  facet_wrap(~dataset, scales = "free_x") +
+  geom_hline(yintercept = 0, linetype = "longdash")
 
 
 
