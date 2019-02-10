@@ -2,6 +2,7 @@
 title: "Detecting Defiers: An Empirical Investigation"
 author: "Ed Jee"
 date: "22 January 2019"
+abstract: "I present some practical tests for detecting failure of the monotonicity assumption essential for causal identification under the LATE theorem. Simulations show mixed results for the Bayesian and Random Forest methods whilst the traditional practice of checking heterogeneous first stage treatment effects performs best. I apply these tests to a sample of papers in labour economics using instrumental variables estimation with an emphasis on visualisation and exploration rather than rigid adherence to Fisher hypothesis testing methods although these are supplied as well."
 output:
     html_document:
       code_folding: show
@@ -18,8 +19,23 @@ knitr::opts_chunk$set(echo = TRUE,
                       warning = FALSE)
 ```
 
+
+
+
+Put intro and lit here:
+
+The LATE theorem is a cornerstone of identification in economics and labour economists in particular have popularised and preached its virtues. Considering the theorem's importance relatively little effort has been expended ensuring the theorem's assumptions are met in the dataset in question. This paper aims to promote a practical methodology that can be incorporated into current 2SLS workflow which can clearly aid researchers in verifying that necessary, but not sufficient, conditions are met empirically in the sample.  
+
+
+
 # Data and Replication
+
+Describe data used and data collecting methodology here
+
 ## Angrist and Evans 1998
+
+Describe Angrist and Evans paper and what a defier means in this context.
+
 #### 1990 Census Data
 ```{r data_import}
 library(haven)
@@ -54,7 +70,6 @@ clean_angrist_evans_data <- function(dataset){
 }
 df_90_clean <- df_90 %>%
   clean_angrist_evans_data()
-
 rm(df_90)
 ```
 
@@ -84,7 +99,7 @@ df_80_clean <- df_80 %>%
          QTRBTHM = as.numeric(QTRBTHM),
          AGEMAR = as.numeric(AGEMAR),
          QTRBKID = as.numeric(QTRBKID),
-         FERTIL = as.numeric(FERT),
+         FERTIL = as.numeric(FERT)
          ) %>% 
   rename_all(tolower)
 
@@ -606,6 +621,9 @@ rm(SEs_IV_4,
 
 
 # Checking First Stage
+
+Write up about methodology.
+
 ## Simulations
 
 ```{r first_stage_sims}
@@ -1077,6 +1095,10 @@ first_stage_interactions_ADH_manu %>%
 
 
 # Random Forest
+
+
+Write up about methodology and simulation performance
+
 ## Angrist and Evans
 
 ```{r random_forest_run}
@@ -1260,4 +1282,15 @@ tau_hat_results_maimonides %>%
   facet_wrap(~dataset)
 ```
 
+## Autor Dorn Hansen
 
+
+# Bayesian Test
+write up on bayesian test
+
+## Simulations
+## Angrist and Evans
+## Maimonides Rule
+## Autor Dorn Hansen
+
+# Conclusion
