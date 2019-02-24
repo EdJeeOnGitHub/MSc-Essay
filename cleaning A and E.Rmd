@@ -25,8 +25,12 @@ knitr::opts_chunk$set(echo = TRUE,
 
 
 
+&nbsp;
+&nbsp;
 
 The LATE theorem is a cornerstone of identification in economics and labour economists in particular have popularised and preached its virtues. Considering the theorem's importance relatively little effort has been expended ensuring the theorem's assumptions are met in the dataset in question. This paper aims to promote a practical methodology that can be incorporated into current instrumental variables workflow in order to clearly aid researchers in verifying that necessary, but not sufficient, conditions are met empirically in the sample.
+
+Checking that the first stage "goes the right way" through the use of interaction terms or subsampling is common knowledge amongst applied practitioners but rarely discussed in depth. I formalise this notion and present some novel contributions of potential interest to social science researchers using saturated first stage regressions, multiple comparison adjustments and negative log-log $p$-value transforms popularised by genome wide association studies (GWAS) to present visually striking evidence for or against monotonicity. Next, I show how advances in causal econometric inference using machine learning techniques, developed by @Wager_and_Athey, can be adapted to estimate the underlying first-stage heterogeneity and provide an alternative to the saturated regression model.    
 
 # The LATE Theorem
 
@@ -72,6 +76,47 @@ There are two papers of direct relevance to monotonicity tests. @kitagawa's test
 # The Tests
 
 ## First Stage Interactions
+
+Common practice in applied work involves checking that the regression first stage "goes the same way" for all subgroups present in a dataset. In the simple binary covariate case this involves checking that $\hat{\pi}_{1im} > 0$ for $m = 0,1$ where $m$ is a dummy variable indicating which sub-population the sample is drawn from, male or female say. This is equivalent to running the saturated regression model:
+$$
+D_i = \pi_0 + \pi_{1i}Z_i + \pi_{2i}m_i + \pi_{3i}(Z_i \times m_i) + \epsilon_i
+$$
+
+and testing $\hat{\pi}_{1i} > 0$ and $\hat{\pi}_{1i} + \hat{\pi}_{3i} > 0$. Extending this framework to multiple, continous and binary-valued covariates is relatively straightforward:
+
+$$
+D_i = \pi_0 + \pi_{1i}Z_i + \sum_{k=1}^K (\gamma_{ki}x_{ki} +  \delta_{ki}(Z_i \times x_{ki})) + \epsilon_i
+$$
+
+where $x_{ki}$ is a vector of $K$ observed covariates. Differentiation with respect to the instrument $Z_i$ gives:
+
+$$
+\frac{\partial D_i}{\partial Z_i} = \pi_{1i} + \sum_{k=1}^K \delta_{ki}x_{ki}
+$$
+
+and therefore we wish to test hypotheses of the form:
+
+$$
+\begin{aligned}
+  H_{0i}: \frac{\partial D_i}{\partial Z_i} = \pi_{1i} + \sum_{k=1}^K \delta_{ki}x_{ki} &= 0 \\
+  H_{1i}: \frac{\partial D_i}{\partial Z_i} = \pi_{1i} + \sum_{k=1}^K \delta_{ki}x_{ki} &< 0
+\end{aligned}
+$$
+In the binary covariate case we could simply estimate the saturated model and test each partial derivative separately - one for $m = 1$ and another for $m = 0$. Moving to the continuous case is essentially the same however now we have as many partial derivatives we wish to test as datapoints - our hypotheses are indexed by $i$ because LATE theorem assumption 4 require monotonicity for all $i$ - the partial derivative, $\frac{\partial D_i}{\partial Z_i}$ must be positive for all $i$.
+
+Therefore, our monotonicity test neatly corresponds with the set, or complete, null [@cite_Shaffer_or_Westfall-Young_or_someone_here]:
+
+$$
+\begin{aligned}
+  H_0^C: \cap_{k \in K} \cap_{i \in N} \pi_{1i} + \delta_{ki}x_{ki} &= 0 \\
+  H_1^C: \cap_{k \in K} \cap_{i \in N} \pi_{1i} + \delta_{ki}x_{ki} &< 0
+\end{aligned}
+$$
+
+
+Any test of this nature immediately faces two problems. First, there must be control of the family wise error rate in the face of $N$ simultaneous statistical inferences and second we must be confident of test power when performing $N$ inferences based off $N$ datapoints.   
+
+
 ## Random Forest
 ## Simulations
 
