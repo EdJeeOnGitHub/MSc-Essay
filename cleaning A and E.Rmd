@@ -30,7 +30,7 @@ knitr::opts_chunk$set(echo = TRUE,
 
 The LATE theorem is a cornerstone of identification in economics and labour economists in particular have popularised and preached its virtues. Considering the theorem's importance relatively little effort has been expended ensuring the theorem's assumptions are met in the dataset in question. This paper aims to promote a practical methodology that can be incorporated into current instrumental variables workflow in order to clearly aid researchers in verifying that necessary, but not sufficient, conditions are met empirically in the sample.
 
-Checking that the first stage "goes the right way" through the use of interaction terms or subsampling is common knowledge amongst applied practitioners but rarely discussed in depth. I formalise this notion and present some novel contributions of potential interest to social science researchers using saturated first stage regressions, multiple comparison adjustments and negative log-log $p$-value transforms popularised by genome wide association studies (GWAS) to present visually striking evidence for or against monotonicity. Next, I show how advances in causal econometric inference using machine learning techniques, developed by @Wager_and_Athey, can be adapted to estimate the underlying first-stage heterogeneity and provide an alternative to the saturated regression model.    
+Checking that the first stage "goes the right way" through the use of interaction terms or subsampling is common knowledge amongst applied practitioners but rarely discussed in depth. I formalise this notion and present some novel contributions of potential interest to social science researchers using saturated first stage regressions, multiple comparison adjustments and negative log-log $p$-value transforms popularised by genome wide association studies (GWAS) to present visually striking evidence for or against monotonicity. Next, I show how advances in causal econometric inference using machine learning techniques, developed by @Wager_and_Athey, can be adapted to estimate the underlying first-stage heterogeneity and provide an alternative to the saturated regression model. I explore the power of the two tests in simulation studies in comparison to @RESTAT's monotonicity test and find XYZ. Finally, I take the tests to the data by applying the methodologies to various seminal papers in labour economics and fail to find significant evidence of defiers.
 
 # The LATE Theorem
 
@@ -108,16 +108,27 @@ Therefore, our monotonicity test neatly corresponds with the set, or complete, n
 
 $$
 \begin{aligned}
-  H_0^C: \cap_{k \in K} \cap_{i \in N} \pi_{1i} + \delta_{ki}x_{ki} &= 0 \\
-  H_1^C: \cap_{k \in K} \cap_{i \in N} \pi_{1i} + \delta_{ki}x_{ki} &< 0
+  H_0^C: \cap_{i \in N} \pi_{1i} + \sum_{k=1}^K \delta_{ki}x_{ki} &= 0 \\
+  H_1^C: \cap_{i \in N} \pi_{1i} + \sum_{k=1}^K \delta_{ki}x_{ki} &< 0
 \end{aligned}
 $$
 
 
-Any test of this nature immediately faces two problems. First, there must be control of the family wise error rate in the face of $N$ simultaneous statistical inferences and second we must be confident of test power when performing $N$ inferences based off $N$ datapoints.   
+Any test of this nature immediately faces two problems. First, there must be control of the family wise error rate (FWER) in the face of $N$ simultaneous statistical inferences and second we must be confident of test power when performing $N$ inferences based off $N$ datapoints.
+
+Fortunately, step-down multiple testing corrections such as Romano-Wolf offer strong control of the FWER and are particularly suited to this problem.
+
+At first glance, a multiple testing correction for $N$ hypotheses seems overly conservative - it seems intuitive to argue that under positive estimates of $\hat{\gamma}$ and $\hat{\delta}$ and a failure to reject the null hypothesis for small/negative covariate values then we certainly fail to reject the null hypothesis for very large positive covariate values i.e. large covariate values are already accounted for under the _closure_ principal of hypothesis testing.
+
+However, this intuition is slightly off - each individual with a different covariate value is essentially representing a different subgroup in the data and since we have no reason a priori to believe that these individuals will have the same heterogeneous treatment effect as a lower valued covariate individual we cannot infer anything about higher valued covariate hypotheses using lower valued covariate counterparts. On the other hand, the intuition above lends itself to a step-down, rather than single step, control procedure. In short, we improve test power by ordering $p$-values, which are increasing in the estimated partial derivative, and updating our adjustment rule.  
+
+In conclusion, the first stage interaction test involves estimating the saturated regression and forming multiplicity adjusted one-sided test statistics for the partial derivative $\frac{ \hat{\partial D_i}}{ \hat{\partial Z_i}}$. 
+
 
 
 ## Random Forest
+
+
 ## Simulations
 
 
