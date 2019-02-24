@@ -5,12 +5,14 @@ date: "22 January 2019"
 abstract: "I present some practical tests for detecting failure of the monotonicity assumption essential for causal identification under the LATE theorem. Simulations show mixed results for the Bayesian and Random Forest methods whilst the traditional practice of checking heterogeneous first stage treatment effects performs best. I apply these tests to a sample of papers in labour economics using instrumental variables estimation with an emphasis on visualisation and exploration rather than rigid adherence to Fisher hypothesis testing methods although these are supplied as well."
 output:
     html_document:
-      code_folding: show
+      code_folding: hide
       highlight: tango
       theme: journal
       toc: yes
       toc_float: yes
 bibliography: bibliography.bib
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -24,15 +26,55 @@ knitr::opts_chunk$set(echo = TRUE,
 
 
 
-The LATE theorem is a cornerstone of identification in economics and labour economists in particular have popularised and preached its virtues. Considering the theorem's importance relatively little effort has been expended ensuring the theorem's assumptions are met in the dataset in question. This paper aims to promote a practical methodology that can be incorporated into current 2SLS workflow which can clearly aid researchers in verifying that necessary, but not sufficient, conditions are met empirically in the sample.  
+The LATE theorem is a cornerstone of identification in economics and labour economists in particular have popularised and preached its virtues. Considering the theorem's importance relatively little effort has been expended ensuring the theorem's assumptions are met in the dataset in question. This paper aims to promote a practical methodology that can be incorporated into current instrumental variables workflow in order to clearly aid researchers in verifying that necessary, but not sufficient, conditions are met empirically in the sample.
 
 # The LATE Theorem
 
-TODO: MHE LATE theorem expo
 
-The LATE theorem [@Angrist_Imbens] describes four key assumptions under which instrumental variables regression will identify a causal effect for a specific subpopulation, "compliers", in the presence of heterogeneous effects. These assumptions are known as:
+The LATE theorem [@Angrist_Imbens] describes four key assumptions under which instrumental variables regression will identify a causal effect for a specific subpopulation, "compliers", in the presence of heterogeneous effects.
 
-- Independence
+Using the random coefficient notation of Mostly Harmless Econometrics [@MHE] we have a  potential outcome $Y_i(d, z)$ corresponding to an individual $i$ with treatment status $D_i = d$ and instrument value $Z_i = z$. Observed treatment status is:
+
+$$
+D_i = D_{0i} + (D_{1i} - D_{0i})Z_i = \pi_0 + \pi_{1i}Z_i + \epsilon_i
+$$
+
+where $\pi_{1i} = (D_{1i} - D_{0i})$ is the heterogeneous causal effect of $Z_i$ on $D_i$ 
+The LATE assumptions are:
+
+1. Independence. $\{Y_i(D_{1i}, 1), Y_i(D_{0i}, 0), D_{1i}, D_{0i}\}\  \amalg  \ Z_i$.
+2. Exclusion. $Y_i(d, 0) = Y_i(d, 1) = Y_{di}  \ \text{for} \ d = 0,1$.
+3. First-Stage. $E[D_{1i} - D_{0i}] \neq 0$.
+4. Monotonicity. $D_{1i} - D_{0i} \geq 0 \ \forall \ i \ \text{or vice versa.}$^[For simplicity the rest of the paper assumes $D_{1i} - D_{0i} \geq 0$ unless explicitly stated otherwise.]
+
+
+Under assumptions 1-4:
+
+$$
+\frac{E[Y_i | Z_i = 1] - E[Y_i | Z_i = 0]}{E[D_i | Z_i = 1] - E[D_i | z_i = 0]} = E[Y_{1i} - Y_{0i} | D_{1i} > D_{01}] = E[\rho_i | \pi_{1i} > 0]
+$$
+
+The Wald estimator is the Local Average Treatment Effect (LATE) - that is, the average treatment effect for the compliers. The monotonicity assumption is key because it rules out "defiers"; those who would have taken the treatment if they hadn't been assigned the instrument but upon instrument assignment are induced not to take the treatment. In the presence of defiers the equation above no longer estimates LATE but some weighted average of the effect for compliers and defiers.
+
+The Wald estimator under assumptions 1-4 is often criticised for lack of external validity - it's hard to argue that the effect for compliers can be generalised to the rest of the population unless the treatment effect is the same for everyone (unlikely) or assignment to complier, defier, always-taker etc. is as good as random (i.e. $corr(\rho_i, \pi_{1i}) = 0$). However, an advantage of LATE is that the estimate is often exactly what we want to know from a policy perspective - a programme's effect on those likely to respond to the programme is more interesting to us than the effect on the entire population if univeral compliance is unlikely. 
+
+On the other hand the Wald estimator in the presence of defiers is near useless to us. Not only does it lack external validity but it fails to uncover a meaningful internally valid estimate. This, in part, motivates the importance of checking monotonicity.
+
+
+## Literature
+
+There are two papers of direct relevance to monotonicity tests. @kitagawa's test for instrument validity and @RESTAT's.   
+
+
+
+
+
+# The Tests
+
+## First Stage Interactions
+## Random Forest
+## Simulations
+
 
 # Data and Replication
 
@@ -46,7 +88,7 @@ Describe Angrist and Evans paper and what a defier means in this context.
 library(haven)
 library(dplyr)
 library(broom)
-df_90 <- read_sas("AngEv98/AngEv98/m_d_903.sas7bdat")
+df_90 <- read_sas("Angrist and Evans 90.sas7bdat")
 ```
 
 
@@ -83,7 +125,7 @@ rm(df_90)
 
 ```{r cleaning_1980}
 
-df_80 <- read_sas("AngEv98/AngEv98/m_d_806.sas7bdat")
+df_80 <- read_sas("Angrist and Evans 80.sas7bdat")
 
 df_80_clean <- df_80 %>%
     mutate(SEXK = as.numeric(SEXK),
@@ -368,7 +410,6 @@ rm(table_5_models_80,
 
 Now table 6
 ```{r table_6, results = "asis"}
-library(purrr)
 create_model_formula <- function(dependent_var){
   model <- as.formula(paste0(dependent_var, "~ morekids + m_age + boy1st + boy2nd + black_m + hisp_m + other_race_m | samesex +  m_age + boy1st + boy2nd + black_m + hisp_m + other_race_m"))
   return(model)
@@ -453,7 +494,7 @@ clean_maimonides_data <- function(dataset){
   return(clean_df)
   
 }
-df_final5_cleaned <- read_dta("Maimonides/final5.dta") %>% 
+df_final5_cleaned <- read_dta("Angrist and Lavy Grade 5.dta") %>% 
   clean_maimonides_data()
 
 ##do stuff
@@ -464,7 +505,7 @@ df_final5_cleaned <- read_dta("Maimonides/final5.dta") %>%
 
 #### Cleaning Grade 4
 ```{r maimonides_grade_4}
-df_final4_cleaned <- read_dta("Maimonides/final4.dta") %>% 
+df_final4_cleaned <- read_dta("Angrist and Lavy Grade 4.dta") %>% 
   clean_maimonides_data()
 
 ```
@@ -1035,10 +1076,10 @@ first_stage_interactions_maimonides %>%
 
 ```
 
-## Autor Dorn Hansen
+## Autor Dorn Hanson
 
 ```{r adh_fs}
-df_china <- read_dta("Autor Dorn Hansen/dta/workfile_china.dta")
+df_china <- read_dta("Autor Dorn and Hanson China.dta")
 first_stage_interactions_ADH_manu <- df_china %>% 
   select(d_sh_empl_mfg,
          d_tradeusch_pw,
@@ -1286,7 +1327,7 @@ tau_hat_results_maimonides %>%
   facet_wrap(~dataset)
 ```
 
-## Autor Dorn Hansen
+## Autor Dorn Hanson
 ```{r ADH_rf}
 
 ADH_matrix <- df_china %>% 
@@ -1367,7 +1408,7 @@ write up on bayesian test
 ## Simulations
 ## Angrist and Evans
 ## Maimonides Rule
-## Autor Dorn Hansen
+## Autor Dorn Hanson
 
 # Conclusion
 
