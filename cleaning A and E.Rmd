@@ -77,7 +77,7 @@ There are two papers of direct relevance to monotonicity tests. @kitagawa's test
 
 ## First Stage Interactions
 
-Common practice in applied work involves checking that the regression first stage "goes the same way" for all subgroups present in a dataset. In the simple binary covariate case this involves checking that $\hat{\pi}_{1im} > 0$ for $m = 0,1$ where $m$ is a dummy variable indicating which sub-population the sample is drawn from, male or female say. This is equivalent to running the saturated regression model:
+Common practice in applied work involves checking that the regression first stage "goes the same way" for all subgroups present in a dataset. In the simple binary covariate case this involves checking that $\hat{\pi}_{1im} > 0$ for $m = 0,1$ where $m$ indicates which sub-population the sample is drawn from, male or female say. This is equivalent to running the saturated regression model:
 $$
 D_i = \pi_0 + \pi_{1i}Z_i + \pi_{2i}m_i + \pi_{3i}(Z_i \times m_i) + \epsilon_i
 $$
@@ -122,7 +122,11 @@ At first glance, a multiple testing correction for $N$ hypotheses seems overly c
 
 However, this intuition is slightly off - each individual with a different covariate value is essentially representing a different subgroup in the data and since we have no reason a priori to believe that these individuals will have the same heterogeneous treatment effect as a lower valued covariate individual we cannot infer anything about higher valued covariate hypotheses using lower valued covariate counterparts. On the other hand, the intuition above lends itself to a step-down, rather than single step, control procedure. In short, we improve test power by ordering $p$-values, which are increasing in the estimated partial derivative, and updating our adjustment rule.  
 
-In conclusion, the first stage interaction test involves estimating the saturated regression and forming multiplicity adjusted one-sided test statistics for the partial derivative $\frac{ \hat{\partial D_i}}{ \hat{\partial Z_i}}$. 
+
+
+The model parameters are well-identified since whilst we're testing $N$ hypotheses, the number of effective parameters we wish to estimate are much lower in fact, only $2K + 1$. The problem can be reconceptualised as constructing prediction intervals for the partial derivates which, whilst heterogeneous, only vary at the subgroup level. This reduction in granularity speaks to the trade-off inherent in heterogeneous causal identification. Whilst we may believe treatment effects vary at the individual level, using conventional methods in the cross-section, we can only identify an average treatment effect for observed subgroups - later in the essay I attempt to use @Wager_and_Athey's causal random forest to address this limitation. 
+
+In conclusion, the first stage interaction test involves estimating the saturated regression and forming multiplicity adjusted one-sided test statistics for the partial derivative $\frac{ \hat{\partial D_i}}{ \hat{\partial Z_i}}$.    
 
 
 
