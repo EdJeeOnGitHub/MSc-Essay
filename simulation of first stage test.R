@@ -5,7 +5,8 @@ library(tibble)
 library(ggplot2)
 library(broom)
 library(purrr)
-##### Functions
+library(grf)
+##### Functions  First Stage ####
 
 find_SEs <- function(model_data_no_y, model_vcov, instrument){
   model_data_no_y <- model_data_no_y %>% 
@@ -79,30 +80,95 @@ run_first_stage_interactions_fast <- function(dataset, dependent_variable, instr
   return(df_margins)
 }
 
+##### Functions Random Forest ####
 
 
-##### Fake Data Generation
+##
+
+df_rf_AE_90 <- AE_data_90 %>%
+  sample_n(N_obs)
+
+X_matrix_AE_90 <- df_rf_AE_90 %>%
+  select(-samesex, -morekids) %>%
+  as.matrix()
+
+forest_first_stage_AE_90 <- causal_forest(X = X_matrix_AE_90,
+                                          Y = df_rf_AE_90$morekids,
+                                          W = df_rf_AE_80$samesex,
+                                          num.trees = 4000)
+tau_hat_oob_AE_90 <- predict(forest_first_stage_AE_90, estimate.variance = TRUE) %>%
+  as_tibble() %>%
+  mutate(dataset = "1990")
+##
+
+
+
+forest_first_stage_sim <- sim_data %>%
+  select_at(vars(contains("V"), -contains(":"))) %>% 
+  as.matrix() %>% 
+  causal_forest(X = .,
+                Y = sim_data$D,
+                W = sim_data$Z,
+                num.trees = 4000) %>% 
+  predict(., estimate.variance = TRUE) %>% 
+  as_tibble() %>% 
+  arrange(predictions) %>% 
+  mutate(sigma_hat = sqrt(variance.estimates),
+         prediction_lo = predictions - 1.96*sigma_hat,
+         prediction_hi = predictions + 1.96*sigma_hat,
+         t_stat = predictions / sigma_hat,
+         pval_one_neg = pnorm(t_stat),
+         pval_one_pos = pnorm(-t_stat),
+         rank = row_number())
+
+sim_first_stage_forest <- function(dataset){
+  forest_sim <- dataset %>% 
+    select_at(vars(contains("V"), -contains(":"))) %>% 
+    as.matrix() %>% 
+    causal_forest(X = .,
+                  Y = dataset$D,
+                  W = dataset$Z,
+                  num.trees = 4000) %>% 
+    predict(., estimate.variance = TRUE) %>% 
+    as_tibble() %>% 
+    mutate(sigma_hat = sqrt(variance.estimates),
+           prediction_lo = predictions - 1.96*sigma_hat,
+           prediction_hi = predictions + 1.96*sigma_hat,
+           t_stat = predictions / sigma_hat,
+           pval_one_neg = pnorm(t_stat),
+           pval_one_pos = pnorm(-t_stat),
+           row_id = row_number())
+  return(forest_sim)
+}
+ff <- sim_first_stage_forest(sim_data)
+
+##### Fake Data Generation #####
 
 
 # 2 + 2k = n
 coefs_positive <- runif(10, 0, 1)
 
 create_fake_data <- function(N, model_betas){
-  X_data <- matrix(abs(rnorm(N*4)), N, 4) %>% 
+  mu <- rep(0, 4)
+  
+  A <- matrix(runif(4^2)*2-1, ncol=4) 
+  Sigma <- t(A) %*% A
+  
+  X_data <- MASS::mvrnorm(n = N, mu = mu, Sigma = Sigma) %>% 
     as_tibble() %>% 
     mutate(Z = rbinom(n = N, 1, 0.5),
-           V4 = ifelse(V4 > 0.5, 1, 0))
+           V4 = ifelse(V4 > 0, 1, 0))
   X_data_interactions <- model.matrix(~ Z*., data = X_data)
   D <- X_data_interactions %*% model_betas
   sim_data <- X_data_interactions %>% 
     as_tibble() %>% 
-    mutate(D = D[, 1] + rnorm(N)*10)
+    mutate(D = D[, 1] + rnorm(N)*5)
   return(sim_data)
 }
 sim_data <- create_fake_data(1000, coefs_positive)
 
 
-##### Running models
+##### Running models #####
 
 
 sim_positive_ols <- lm(D ~ ., data = sim_data) %>% 
@@ -129,7 +195,7 @@ library(tidyr)
 sim_positive %>% 
   select(p_2_adjust, pval_twosided)
 
-##### Romano Wolf
+##### Romano Wolf ####
 # library(StepwiseTest)
 # library(modelr)
 # library(furrr)
@@ -179,7 +245,7 @@ sim_positive %>%
 # 
 
 
-##### Power stuff
+##### Power Simulations #####
 
 coefs_negative <- runif(10, -1, 1)
 coefs_negative[1:2] <- abs(coefs_negative[1:2])
@@ -195,18 +261,6 @@ sim_negative <- coefs_negative %>%
 
 fixed_negative_coefs <- c(0.5, 0.5, -0.5, -0.5, 0, 1, 0.25, 0.3, -0.2, -0.2)
 
-power_neg <- 1:10 %>% 
-  map_df(., ~(create_fake_data(
-    N = 1000,
-    model_betas = fixed_negative_coefs) %>% 
-      select_at(vars(-contains(":"), - `(Intercept)`)) %>% 
-      run_first_stage_interactions_fast(.,
-                                        "D",
-                                        "Z") %>% 
-      mutate(draw = .x)))
-power_neg
-
-
 power_test <- function(coefs){
   sim_data <- create_fake_data(N = 1000,
                                model_betas = coefs)
@@ -217,7 +271,10 @@ power_test <- function(coefs){
     select_at(vars(-contains(":"), -`(Intercept)`)) %>% 
     run_first_stage_interactions_fast(.,
                                       "D",
-                                      "Z")
+                                      "Z") %>% 
+    mutate(row_id = row_number(),
+           pval_one_pos = pnorm(-t_stat),
+           model = "saturated first stage")
   
   interaction_coefs <- c(coefs[2],
                          coefs[7:10])
@@ -231,13 +288,43 @@ power_test <- function(coefs){
   
   true_dydx <- interaction_X %*% interaction_coefs
   first_stage_model$true_dydx <- true_dydx[,1]
-  return(first_stage_model)
+  forest_model <- sim_first_stage_forest(sim_data)
+  
+  
+  
+  
+  
+  forest_full_wide <- left_join(forest_model,
+                                 first_stage_model %>% 
+                                   select_at(vars(row_id,
+                                              contains("V", ignore.case = FALSE),
+                                              instrument,
+                                              true_dydx,
+                                              dependent_variable)),
+                                 by = "row_id") %>% 
+    rename("dydx_instrument" = predictions,
+           "SE_dydx_instrument" = sigma_hat,
+           "dydx_lo" = prediction_lo,
+           "dydx_hi" = prediction_hi) %>% 
+    select(-variance.estimates,
+           -debiased.error) %>% 
+    mutate(model = "forest")
+  
+  models_df_long <- suppressWarnings(bind_rows(first_stage_model %>% 
+                                select(-pval_holm),
+                              forest_full_wide))
+
+  return(models_df_long)
 }
 
-power_test(fixed_negative_coefs) %>% 
-  ggplot(aes(x = true_dydx, y = dydx_instrument)) +
-  geom_point()
+negative_example <- power_test(fixed_negative_coefs)
 
+
+negative_example %>%  
+  ggplot(aes(x = true_dydx, y = dydx_instrument, colour = model)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0) +
+  facet_wrap(~model)
 
 
 power_test(fixed_negative_coefs) %>% 
@@ -251,8 +338,7 @@ power_test(fixed_negative_coefs) %>%
 
 
 
-coef_matrix <- matrix(rnorm(10000*10, mean = -1, sd = 3), 10000, 10)
-coef_matrix[, 2] <- abs(coef_matrix[, 2])
+coef_matrix <- matrix(runif(1000*10, -1, 1), 1000, 10)
 coef_matrix_df <- coef_matrix %>% 
   as_tibble()
 factor_pos <- ifelse(rowMeans(coef_matrix) < 0, -1, 1) 
@@ -263,85 +349,173 @@ coef_list <- lapply(seq_len(nrow(coef_matrix)), function(i) coef_matrix[i,]*fact
 simulation_func <- function(x){
   pw_test_data <- power_test(x)
   
-  summ_stats <- pw_test_data %>%  
-    mutate(defier = ifelse(true_dydx < 0, 1, 0)) %>% 
-    summarise(min_tstat = min(t_stat),
-              pval_one_neg = min(pval_one_neg),
-              pct_defier = sum(defier)/nrow(.),
-              mean_dydx = mean(dydx_instrument))
-  model_coefs <- lm(dependent_variable ~ instrument + V1 + V2 + V3 + V4, data = pw_test_data) %>% 
+  estimated_coef <- lm(dependent_variable ~ instrument + V1 + V2 + V3 + V4, data = pw_test_data) %>% 
     tidy() %>% 
     filter(term == "instrument") %>% 
-    select(estimate) %>% 
-    bind_cols(summ_stats)
-  return(model_coefs)
+    select(estimate)
+  
+  pw_test_data$estimate <- estimated_coef[[1]]
+  
+  power_sim_df <- pw_test_data %>%   
+    mutate(defier_true = !(sign(true_dydx) == (sign(estimate))),
+           defier_estimated = !(sign(dydx_instrument) == (sign(estimate)))) %>% 
+    group_by(model) %>% 
+    summarise(min_tstat = min(t_stat),
+              max_tstat = max(t_stat),
+              pval_one_neg = min(pval_one_neg),
+              mean_dydx = mean(dydx_instrument),
+              pval_one_pos = min(pval_one_pos),
+              n_defiers_true = sum(defier_true),
+              pct_defiers_true = n_defiers_true/nrow(pw_test_data),
+              n_defiers_estimated = sum(defier_estimated),
+              pct_defiers_estimated = n_defiers_estimated/nrow(pw_test_data),
+              estimate = first(estimate)) %>% 
+    mutate(pval_defier = ifelse(estimate > 0,
+                                pval_one_neg,
+                                pval_one_pos))
+  
+  
+  return(power_sim_df)
 }
 
-library(furrr)
-plan(multisession)
 
-simulations <- coef_list %>% 
-  future_map_dfr(simulation_func,
-                 .options = future_options(globals = c("sim_data",
-                                                       "run_first_stage_interactions_fast",
-                                                       "find_SEs",
-                                                       "create_fake_data",
-                                                       "simulation_func",
-                                                       "power_test"),
-                                           packages = c("dplyr",
-                                                        "modelr",
-                                                        "margins",
-                                                        "broom")),
-                 .progress = TRUE)
-plan(sequential)
+
+run_sim <- TRUE
+
+if (run_sim) {
+  library(furrr)
+  plan(multisession)
+  
+  simulations <- coef_list %>% 
+    future_map_dfr(simulation_func,
+                   .options = future_options(globals = c("sim_data",
+                                                         "run_first_stage_interactions_fast",
+                                                         "find_SEs",
+                                                         "create_fake_data",
+                                                         "simulation_func",
+                                                         "power_test",
+                                                         "sim_first_stage_forest"),
+                                             packages = c("dplyr",
+                                                          "modelr",
+                                                          "margins",
+                                                          "broom",
+                                                          "grf")),
+                   .progress = TRUE)
+  
+  
+  
+  plan(sequential)
+  # write.csv(simulations, file = "power_simulations.csv", row.names = FALSE)
+  
+} else {
+  simulations <- readr::read_csv("power_simulations.csv")
+}
+
+write.csv(simulations, file = "power_simulations_both.csv", row.names = FALSE)
+
 ## TODO discretize and bin up
 
+
+##### Power Graphics ####
+library(scales)
+negative_log_trans <- function(base = exp(1)) {
+  trans <- function(x) -log(x, base)
+  inv <- function(x) base^(-x)
+  trans_new(paste0("negative_log-", format(base)), trans, inv, 
+            log_breaks(base = base), 
+            domain = c(1e-100, Inf))
+}
+
 simulations %>% 
-  filter(estimate > 0) %>%
-  filter(pct_defier > 0) %>% 
-  ggplot(aes(x = pct_defier, y = pval_one_neg)) +
-  geom_point() +
+  filter(pct_defiers_true > 0) %>% 
+  ggplot(aes(x = pct_defiers_true, y = pval_defier)) +
+  geom_point(alpha = 0.2) +
   geom_hline(yintercept = 0.05) +
   scale_y_reverse() +
-  geom_smooth()
+  theme_minimal() +
+  facet_wrap(~model)
 
 simulations %>% 
-  filter(estimate > 0) %>% 
-  filter(pct_defier > 0) %>% 
-  ggplot(aes(x = mean_dydx, y = pval_one_neg)) +
-  geom_point() +
-  geom_smooth() +
-  scale_y_reverse()
+  filter(pct_defiers_true > 0) %>% 
+  ggplot(aes(x = pct_defiers_true, y = pval_defier)) +
+  geom_point(alpha = 0.1) +
+  geom_hline(yintercept = 0.05) +
+  scale_y_continuous(trans = negative_log_trans(10)) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
+  theme_minimal() +
+  facet_wrap(~model)
 
+
+simulations %>% 
+  filter(pct_defiers_true > 0) %>% 
+  ggplot(aes(x = pct_defiers_true, y = pval_defier)) +
+  geom_point(alpha = 0.2) +
+  geom_hline(yintercept = 0.05, linetype = "longdash") +
+  scale_y_reverse() +
+  geom_smooth(se = TRUE, size = 1.5, colour = "violetred") +
+  scale_x_continuous(limits = c(0, 0.2), labels = scales::percent_format(accuracy = 1)) +
+  theme_minimal() +
+  facet_wrap(~model)
+
+library(ggExtra)
+p <- simulations %>% 
+  filter(pct_defiers_true > 0) %>% 
+  ggplot(aes(x = mean_dydx, y = pval_defier, colour = factor(sign(estimate)), group = sign(estimate))) +
+  geom_point(alpha = 0.05) +
+  geom_smooth(method = lm, se = FALSE) +
+  scale_y_continuous(trans = negative_log_trans(10)) +
+  theme_minimal() +
+  guides(colour = "none")
+ggMarginal(p,  type = "histogram",groupColour = TRUE, groupFill = TRUE)
 
 sim_bin <- simulations %>% 
-  group_by(gr=cut(pct_defier, breaks= seq(0, 1, by = 0.05)) ) %>% 
+  group_by(model,
+           gr=cut(pct_defiers_true, breaks= seq(0, 1, by = 0.05))) %>% 
   mutate(n= n()) %>%
   arrange(as.numeric(gr))
 
 
 
+simulations %>% 
+  filter(pct_defiers_true == 0) %>% 
+  ggplot(aes(sample = pval_defier)) +
+  stat_qq(distribution = qunif) +
+  geom_abline(intercept = 0, slope = 1) +
+  scale_y_continuous(trans = negative_log_trans(10)) +
+  scale_x_continuous(trans = negative_log_trans(10)) +
+  facet_wrap(~model)
 
+
+simulations %>% 
+  filter(pct_defiers_true == 0) %>% 
+  ggplot(aes(x = pval_defier)) +
+  geom_histogram()
 
 
 sim_bin %>% 
-  mutate(n_rejected = ifelse(pval_one_neg < 0.05, 1, 0),
+  mutate(n_rejected = ifelse(pval_defier < 0.05, 1, 0),
          pct_rejected = sum(n_rejected)/n) %>% 
   na.omit() %>% 
-  ggplot(aes(x = gr, y = pct_rejected)) +
-  geom_point() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  ggplot(aes(x = gr, y = pct_rejected, size = n, colour = model)) +
+  geom_point() +  
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  guides(size = "none",
+         colour = "none") +
+  facet_wrap(~model)
+
 
 library(ggridges)
 
 
 sim_bin %>% 
   na.omit() %>% 
-  ggplot(aes(x = pval_one_neg, y = gr, fill = gr)) +
+  ggplot(aes(x = pval_defier, y = gr, fill = gr)) +
   geom_density_ridges() +
   theme_ridges() +
-  guides(fill = "none")
-
+  guides(fill = "none") +
+  scale_x_continuous(trans = negative_log_trans(10))
 
 sim_bin %>% 
   na.omit() %>% 
@@ -350,16 +524,10 @@ sim_bin %>%
   facet_wrap(~gr, ncol = 3) +
   guides(fill = "none")
 
-##### Power checks
-
-sim_negative %>% 
-  filter(pval_one_neg < 0.05)
-
-sim_negative %>% 
-  filter(pval_one_neg == min(pval_one_neg))
 
 
-##### Graphics
+
+##### MISC ####
 
 
 sim_positive %>%
