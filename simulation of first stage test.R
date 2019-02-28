@@ -244,7 +244,6 @@ power_test(fixed_negative_coefs) %>%
   filter(true_dydx < 0 | dydx_instrument < 0)
 
 
-
 ## MAKE A TEST
 # power_test(coefs_negative) %>% 
 #   select(dydx_instrument, V1, V2, V3, V4, instrument, true_dydx) %>% 
@@ -252,7 +251,7 @@ power_test(fixed_negative_coefs) %>%
 
 
 
-coef_matrix <- matrix(rnorm(1000*10, mean = -1, sd = 3), 1000, 10)
+coef_matrix <- matrix(rnorm(10000*10, mean = -1, sd = 3), 10000, 10)
 coef_matrix[, 2] <- abs(coef_matrix[, 2])
 coef_matrix_df <- coef_matrix %>% 
   as_tibble()
@@ -294,7 +293,7 @@ simulations <- coef_list %>%
                                                         "margins",
                                                         "broom")),
                  .progress = TRUE)
-
+plan(sequential)
 ## TODO discretize and bin up
 
 simulations %>% 
@@ -311,20 +310,18 @@ simulations %>%
   filter(pct_defier > 0) %>% 
   ggplot(aes(x = mean_dydx, y = pval_one_neg)) +
   geom_point() +
-  geom_smooth()
+  geom_smooth() +
+  scale_y_reverse()
 
 
 sim_bin <- simulations %>% 
   group_by(gr=cut(pct_defier, breaks= seq(0, 1, by = 0.05)) ) %>% 
   mutate(n= n()) %>%
   arrange(as.numeric(gr))
-plan(sequential)
 
 
-sim_bin %>% 
-  mutate(pct_rejected = sum(ifelse(pct_defier < 0.05, 1, 0))/n) %>% 
-  ggplot(aes(x = gr, y = pct_rejected)) +
-  geom_point()
+
+
 
 
 sim_bin %>% 
