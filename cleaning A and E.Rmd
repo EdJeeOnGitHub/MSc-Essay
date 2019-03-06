@@ -117,6 +117,10 @@ $$
 
 Any test of this nature immediately faces two problems. First, there must be control of the family wise error rate (FWER) in the face of $N$ simultaneous statistical inferences and second we must be confident of test power when performing $N$ inferences based off $N$ datapoints.
 
+
+
+THIS BIT IS WRONG REWRITE IT.
+
 Fortunately, step-down multiple testing corrections such as Romano-Wolf offer strong control of the FWER and are particularly suited to this problem.
 
 At first glance, a multiple testing correction for $N$ hypotheses seems overly conservative - it seems intuitive to argue that under positive estimates of $\hat{\gamma}$ and $\hat{\delta}$ and a failure to reject the null hypothesis for small/negative covariate values then we certainly fail to reject the null hypothesis for very large positive covariate values i.e. large covariate values are already accounted for under the _closure_ principal of hypothesis testing.
@@ -217,13 +221,19 @@ run_first_stage_interactions_fast <- function(dataset, dependent_variable, instr
 
 ## Random Forest
 
+[Regression Tree](https://commons.wikimedia.org/wiki/File:Cart_tree_kyphosis.png#/media/File:Cart_tree_kyphosis.png)
+
+Random forest is this but with bagging, bootstrapped aggregation, and some other stuff to prevent overfitting.
+
+
+Causal Random Forest is the above but with slightly different decision rules to ensure causal estimates.
 
 ## Simulations
 
 
 ### Power Simulations
 
-I generate 1000 draws of data using the following data generating process:
+I generate 2000 draws of the data, with 1,000, 5,000 and 10,000 observations respectively, using the following data generating process:
 
 $$
 D_i = \pi_0 + \pi_{1i}Z_i + \sum_{k=1}^4 (\gamma_{ki}x_{ki} +  \delta_{ki}(Z_i \times x_{ki})) + \epsilon_i; \ \epsilon_i \sim N(0, 5^2)
@@ -388,7 +398,7 @@ if (run_sim) {
   # write.csv(simulations_power, file = "power_simulations.csv", row.names = FALSE)
   # write.csv(simulations_power, file = "power_simulations_both.csv", row.names = FALSE)  
 } else {
-  simulations_power <- readr::read_csv("power_simulations_both.csv")
+  simulations_power <- readr::read_csv("C:/Users/edjee/Dropbox/Ed/power_simulations_both_large.csv")
 }
 
 simulations_power <- simulations_power %>% 
@@ -406,6 +416,26 @@ negative_log_trans <- function(base = exp(1)) {
             log_breaks(base = base), 
             domain = c(1e-100, Inf))
 }
+
+## Remove this one
+simulations_power %>% 
+  filter(pct_defiers_true > 0) %>% 
+  ggplot(aes(x = pct_defiers_true,
+             y = pval_defier,
+             colour = model)) +
+  geom_point(alpha = 0.15) +
+  geom_hline(yintercept = 0.05,
+             linetype = "longdash",
+             alpha = 0.5) +
+  guides(colour = "none") +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
+  facet_wrap(~model) +
+  labs(x = "Defier Percentage",
+       y = "P-Value",
+       caption = "Note: Dashed line indicates a p-value of 0.05.",
+       title = "P-Values from Power Simulations") +
+  theme_minimal()
+
 
 simulations_power %>% 
   filter(pct_defiers_true > 0) %>% 
@@ -432,6 +462,27 @@ simulations_power %>%
 
 simulations_power %>% 
   filter(pct_defiers_true > 0) %>% 
+  ggplot(aes(x = pct_defiers_true,
+             y = pval_defier,
+             colour = model)) +
+  geom_point(alpha = 0.15) +
+  geom_hline(yintercept = 0.05,
+             linetype = "longdash",
+             alpha = 0.5) +
+  scale_y_continuous(trans = negative_log_trans(10)) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
+  guides(colour = "none") +
+  theme_minimal() +
+  facet_wrap(~model) +
+  labs(x = "Defier Percentage",
+       y = "P-Value",
+       caption = "Note: Y-Axis on negative log(10) scale. \n Dashed line indicates a p-value of 0.05",
+       title = "P-Values from Power Simulations")
+
+
+## Remove this one
+simulations_power %>% 
+  filter(pct_defiers_true > 0 & pval_defier > 1e-80) %>% 
   ggplot(aes(x = pct_defiers_true,
              y = pval_defier,
              colour = model)) +
@@ -498,6 +549,7 @@ simulations_power %>%
 
 
 ```{r demonstration_plot}
+# REMOVE this one
 p <- simulations_power %>% 
   filter(pct_defiers_true > 0) %>% 
   ggplot(aes(x = mean_dydx,
@@ -516,8 +568,6 @@ ggMarginal(p,  type = "histogram")
 
 
 ```{r mean_dydx_plot}
-
-
 p <- simulations_power %>% 
   filter(pct_defiers_true > 0) %>% 
   ggplot(aes(x = mean_dydx,
@@ -580,23 +630,23 @@ sim_bin_summ %>%
        caption = "Note: Point size indicates number of draws in bin.",
        title = "Power As a Function of Defier Proportion")
 
-sim_bin_summ %>% 
-  na.omit() %>% 
-  filter(mean_true_defier < 0.3) %>% 
-  ggplot(aes(x = gr, y = pct_rejected, colour = model, group = model)) +
-  geom_point(aes(size = n)) + 
-  geom_line() +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-  guides(size = "none") +
-    theme(legend.position = c(0.5, 0.2),
-        legend.background = element_rect(fill="lightgrey", 
-                                  size=0.5,  linetype = 0)) +
-    labs(y = "Proportion Null Rejected",
-       x = "Defier Proportion",
-       caption = "Note: Point size indicates number of draws in bin.",
-       title = "Power As a Function of Defier Proportion")
+# sim_bin_summ %>% 
+#   na.omit() %>% 
+#   filter(mean_true_defier < 0.3) %>% 
+#   ggplot(aes(x = gr, y = pct_rejected, colour = model, group = model)) +
+#   geom_point(aes(size = n)) + 
+#   geom_line() +
+#   theme_minimal() +
+#   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+#   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+#   guides(size = "none") +
+#     theme(legend.position = c(0.5, 0.2),
+#         legend.background = element_rect(fill="lightgrey", 
+#                                   size=0.5,  linetype = 0)) +
+#     labs(y = "Proportion Null Rejected",
+#        x = "Defier Proportion",
+#        caption = "Note: Point size indicates number of draws in bin.",
+#        title = "Power As a Function of Defier Proportion")
 
 
 
@@ -622,7 +672,7 @@ sim_bin %>%
        title = "Mean P-Value as a Function of Defier Proportion") +
   geom_hline(yintercept = 0.05,
              linetype = "longdash",
-             alpha = 0.5)
+             alpha = 0.5) 
 
 sim_bin_summ %>% 
   na.omit() %>% 
@@ -663,7 +713,6 @@ sim_bin %>%
        x = "P-Value",
        title = "P-Value distribution as Defier Proportion Changes",
        caption = "Note: X-Axis on negative log(10) scale.")
-
 
 
 
@@ -1559,7 +1608,7 @@ first_stage_interactions_AE %>%
   theme_minimal() +
   scale_x_continuous(trans=negative_log_trans(10)) +
   scale_y_continuous(trans=negative_log_trans(10)) +
-  labs(title = "QQ plot of P-values First Stage Interactions",
+  labs(title = "QQ plot of P-values - Same-Sex Instrument",
        caption = "Note: Both axes use negative log(10) scale.") +
   facet_wrap(~dataset) +
   guides(colour = "none") +
@@ -1651,7 +1700,7 @@ first_stage_interactions_maimonides %>%
   theme_minimal() +
   scale_x_continuous(trans=negative_log_trans(10)) +
   scale_y_continuous(trans=negative_log_trans(10)) +
-  labs(title = "QQ plot of P-values First Stage Interactions - Maimonides' Instrument",
+  labs(title = "QQ plot of P-values - Maimonides' Instrument",
        caption = "Note: Both axes negative log(10) scale.") +
   facet_wrap(~dataset) +
   scale_colour_manual(values = colour_pair) +
@@ -1698,11 +1747,17 @@ first_stage_interactions_ADH_manu %>%
   geom_histogram(colour = "black") +
   guides(fill = "none") +
   scale_fill_manual(values = colour_pair) +
-  theme_minimal() 
+  theme_minimal() +
+  labs(x = "Instrument Partial Effects",
+       title = "Partial Effects - Bartik Instrument")
 
 first_stage_interactions_ADH_manu %>% 
   ggplot(aes(x = pval_one_neg, fill = dataset)) +
-  geom_histogram() 
+  geom_histogram(colour = "black") +
+  scale_fill_manual(values = colour_pair) +
+  labs(x = "P-Value",
+       title = "P-Values - Bartik Instrument") +
+  theme_minimal()
 
 first_stage_interactions_ADH_manu %>% 
   arrange(dydx_instrument) %>% 
@@ -1711,7 +1766,11 @@ first_stage_interactions_ADH_manu %>%
   geom_point(aes(colour = dataset)) +
   geom_ribbon(alpha = 0.2) +
   theme_minimal() +
-  geom_hline(yintercept = 0, linetype = "longdash") 
+  geom_hline(yintercept = 0, linetype = "longdash") +
+  scale_colour_manual(values = colour_pair) +
+  labs(title = "Partial Effects Ranked - Bartik Instrument",
+       y = "Partial Effect") +
+  guides(colour = "none")
 
 first_stage_interactions_ADH_manu %>% 
   ggplot(aes(sample = pval_one_neg, colour = dataset)) +
@@ -1720,9 +1779,9 @@ first_stage_interactions_ADH_manu %>%
   theme_minimal() +
   scale_x_continuous(trans=negative_log_trans(10)) +
   scale_y_continuous(trans=negative_log_trans(10)) +
-  labs(title = "QQ plot of P-values First Stage Interactions",
-       subtitle = "Negative Log(10) Scale") +
-  geom_hline(yintercept = 0.05, linetype = "longdash", alpha = 0.2)
+  labs(title = "QQ plot of P-values - Bartik Instrument",
+       caption = "Note: Both axes use negative log(10) scale.") +
+  guides(colour = "none")
 ```
 
 
@@ -1780,8 +1839,13 @@ tau_hat_oob_AE <- bind_rows(tau_hat_oob_AE_90,
 ggplot(tau_hat_oob_AE,
        aes(x = predictions,
            fill = dataset)) +
-  geom_histogram() +
-  facet_wrap(~dataset)
+  geom_histogram(colour = "black") +
+  facet_wrap(~dataset) +
+  scale_fill_manual(values = colour_pair) +
+  labs(x = "Heterogeneous Effects",
+       title = "Heterogeneous Effects - Same-Sex Instrument") +
+  theme_minimal() +
+  guides(fill = "none")
 
 tau_hat_results <- tau_hat_oob_AE %>%
   group_by(dataset) %>% 
@@ -1802,7 +1866,11 @@ tau_hat_results %>%
   geom_ribbon(alpha = 0.1) +
   theme_minimal() +
   geom_hline(yintercept = 0, linetype = "longdash") +
-  facet_wrap(~dataset) 
+  facet_wrap(~dataset) +
+  scale_colour_manual(values = colour_pair) +
+  labs(y = "Heterogeneous Effects",
+       title = "Heterogeneous Effects Ranked - Same-Sex Instrument") +
+  guides(colour = "none")
 
 tau_hat_results %>% 
   filter(reject_H0 == 1) 
@@ -1815,10 +1883,12 @@ tau_hat_results %>%
   theme_minimal() +
   scale_x_continuous(trans=negative_log_trans(10)) +
   scale_y_continuous(trans=negative_log_trans(10)) +
-  geom_hline(yintercept = 0.05, linetype = "longdash", alpha = 0.2) +
   labs(title = "QQ plot of P-values",
-       subtitle = "Negative Log(10) Scale") +
-  facet_wrap(~dataset)
+       caption = "Note: Both axes use negative log(10) scale.") +
+  facet_wrap(~dataset) +
+  scale_colour_manual(values = colour_pair) +
+  guides(colour = "none",
+         fill = "none")
   
 ```
 
@@ -1873,8 +1943,13 @@ tau_hat_oob_maimonides <- bind_rows(tau_hat_oob_maim_5,
 ggplot(tau_hat_oob_maimonides,
        aes(x = predictions,
            fill = dataset)) +
-  geom_histogram() +
-  facet_wrap(~dataset)
+  geom_histogram(colour = "black") +
+  facet_wrap(~dataset) +
+  scale_fill_manual(values = colour_pair) +
+  labs(x = "Heterogeneous Effects",
+       title = "Heterogeneous Effects - Maimonides' Instrument") +
+  theme_minimal() +
+  guides(fill = "none")
 
 tau_hat_results_maimonides <- tau_hat_oob_maimonides %>%
   group_by(dataset) %>% 
@@ -1890,12 +1965,19 @@ tau_hat_results_maimonides <- tau_hat_oob_maimonides %>%
          rank = row_number())
 
 tau_hat_results_maimonides %>% 
-  ggplot(aes(x = rank, y = predictions, ymin = prediction_lo, ymax = prediction_hi)) + 
+  ggplot(aes(x = rank,
+             y = predictions,
+             ymin = prediction_lo,
+             ymax = prediction_hi)) + 
   geom_point(aes(colour = dataset)) +
   geom_ribbon(alpha = 0.1) +
   theme_minimal() +
   geom_hline(yintercept = 0, linetype = "longdash") +
-  facet_wrap(~dataset) 
+  facet_wrap(~dataset) +
+  scale_colour_manual(values = colour_pair) +
+  labs(y = "Heterogeneous Effects Ranked - Maimonides' Instrument") +
+  guides(colour = "none",
+         fill = "none")
 
 tau_hat_results_maimonides %>% 
   filter(reject_H0 == 1) 
@@ -1908,10 +1990,12 @@ tau_hat_results_maimonides %>%
   theme_minimal() +
   scale_x_continuous(trans=negative_log_trans(10)) +
   scale_y_continuous(trans=negative_log_trans(10)) +
-  geom_hline(yintercept = 0.05, linetype = "longdash", alpha = 0.2) +
-  labs(title = "QQ plot of P-values",
-       subtitle = "Negative Log(10) Scale") +
-  facet_wrap(~dataset)
+  labs(title = "QQ plot of P-values - Maimonides' Rule",
+       caption = "Note: Both axes use negative log(10) scale.") +
+  facet_wrap(~dataset) +
+  scale_colour_manual(values = colour_pair) +
+  guides(colour = "none",
+         fill = "none")
 ```
 
 ## Autor Dorn Hanson
@@ -1936,9 +2020,9 @@ forest_first_stage_ADH <- causal_forest(X = ADH_matrix,
                                         W = df_china$d_tradeotch_pw_lag,
                                         num.trees = 4000)
 
-tau_hat_oob_ADH <- predict(forest_first_stage_maim_5, estimate.variance = TRUE) %>%
+tau_hat_oob_ADH <- predict(forest_first_stage_ADH, estimate.variance = TRUE) %>%
   as_tibble() %>% 
-  mutate(dataset = "Fifth Grade")
+  mutate(dataset = "ADH")
 
 ```
 
@@ -1950,8 +2034,13 @@ tau_hat_oob_ADH <- predict(forest_first_stage_maim_5, estimate.variance = TRUE) 
 ```{r ADH_rf_plot}
 
 ggplot(tau_hat_oob_ADH,
-       aes(x = predictions)) +
-  geom_histogram()
+       aes(x = predictions, fill = dataset)) +
+  geom_histogram(colour = "black") +
+  scale_fill_manual(values = colour_pair) +
+  labs(x = "Heterogeneous Effects",
+       title = "Heterogeneous Effects - Bartik Instrument") +
+  theme_minimal() +
+  guides(fill = "none")
 
 tau_hat_results_ADH <- tau_hat_oob_ADH %>%
   arrange(predictions) %>% 
@@ -1967,25 +2056,28 @@ tau_hat_results_ADH <- tau_hat_oob_ADH %>%
 
 tau_hat_results_ADH %>% 
   ggplot(aes(x = rank, y = predictions, ymin = prediction_lo, ymax = prediction_hi)) + 
-  geom_point() +
+  geom_point(aes(colour = dataset)) +
   geom_ribbon(alpha = 0.1) +
   theme_minimal() +
-  geom_hline(yintercept = 0, linetype = "longdash")
+  geom_hline(yintercept = 0, linetype = "longdash") +
+  scale_colour_manual(values = colour_pair) +
+  labs(y = "Heterogeneous Effects",
+       title = "Heterogeneous Effects Ranked - Bartik Instrument") +
+  guides(colour = "none",
+         fill = "none")
 
 tau_hat_results_ADH %>% 
-  filter(reject_H0 == 1) 
-
-
-tau_hat_results_ADH %>% 
-  ggplot(aes(sample = pval)) +
+  ggplot(aes(sample = pval, colour = dataset)) +
   stat_qq(distribution = qunif)  +
   geom_abline(intercept = 0, slope = 1) +
   theme_minimal() +
   scale_x_continuous(trans=negative_log_trans(10)) +
   scale_y_continuous(trans=negative_log_trans(10)) +
-  geom_hline(yintercept = 0.05, linetype = "longdash", alpha = 0.2) +
-  labs(title = "QQ plot of P-values",
-       subtitle = "Negative Log(10) Scale")
+  labs(title = "QQ plot of P-values - Bartik Instrument",
+       caption = "Note: Both axes use negative log(10) scale.") +
+  guides(colour = "none",
+         fill = "none") +
+  scale_colour_manual(values = colour_pair)
 ```
 
 
@@ -1998,4 +2090,305 @@ write up on bayesian test
 
 # Conclusion
 
+# Appendix
+
+```{r p_value_normal_scale_plot_appendix}
+simulations_power <- readr::read_csv("C:/Users/edjee/Dropbox/Ed/power_simulations_both_medium.csv") %>% 
+  mutate(model = tools::toTitleCase(model))
+
+library(scales)
+negative_log_trans <- function(base = exp(1)) {
+  trans <- function(x) -log(x, base)
+  inv <- function(x) base^(-x)
+  trans_new(paste0("negative_log-", format(base)), trans, inv, 
+            log_breaks(base = base), 
+            domain = c(1e-100, Inf))
+}
+
+## Remove this one
+simulations_power %>% 
+  filter(pct_defiers_true > 0) %>% 
+  ggplot(aes(x = pct_defiers_true,
+             y = pval_defier,
+             colour = model)) +
+  geom_point(alpha = 0.15) +
+  geom_hline(yintercept = 0.05,
+             linetype = "longdash",
+             alpha = 0.5) +
+  guides(colour = "none") +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
+  facet_wrap(~model) +
+  labs(x = "Defier Percentage",
+       y = "P-Value",
+       caption = "Note: Dashed line indicates a p-value of 0.05.",
+       title = "P-Values from Power Simulations") +
+  theme_minimal()
+
+
+simulations_power %>% 
+  filter(pct_defiers_true > 0) %>% 
+  ggplot(aes(x = pct_defiers_true,
+             y = pval_defier,
+             colour = model)) +
+  geom_point(alpha = 0.15) +
+  geom_hline(yintercept = 0.05,
+             linetype = "longdash",
+             alpha = 0.5) +
+  guides(colour = "none") +
+  scale_y_reverse() +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
+  facet_wrap(~model) +
+  labs(x = "Defier Percentage",
+       y = "P-Value",
+       caption = "Note: Y-axis scale inverted. \n Dashed line indicates a p-value of 0.05.",
+       title = "P-Values from Power Simulations") +
+  theme_minimal()
+```
+
+
+```{r p_val_power_neg_log_10_appendix}
+
+simulations_power %>% 
+  filter(pct_defiers_true > 0) %>% 
+  ggplot(aes(x = pct_defiers_true,
+             y = pval_defier,
+             colour = model)) +
+  geom_point(alpha = 0.15) +
+  geom_hline(yintercept = 0.05,
+             linetype = "longdash",
+             alpha = 0.5) +
+  scale_y_continuous(trans = negative_log_trans(10)) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
+  guides(colour = "none") +
+  theme_minimal() +
+  facet_wrap(~model) +
+  labs(x = "Defier Percentage",
+       y = "P-Value",
+       caption = "Note: Y-Axis on negative log(10) scale. \n Dashed line indicates a p-value of 0.05",
+       title = "P-Values from Power Simulations")
+
+```
+
+```{r p_val_low_defier_plot_appendix}
+simulations_power %>% 
+  filter(pct_defiers_true > 0) %>% 
+  ggplot(aes(x = pct_defiers_true,
+             y = pval_defier,
+             colour = model)) +
+  geom_point(alpha = 0.15,
+             aes(colour = model)) +
+  geom_hline(yintercept = 0.05, linetype = "longdash") +
+  scale_y_reverse() +
+  geom_smooth(se = TRUE,
+              colour = "violetred",
+              alpha = 0.5) +
+  scale_x_continuous(limits = c(0, 0.2), labels = scales::percent_format(accuracy = 1)) +
+  theme_minimal() +
+  facet_wrap(~model) +
+  guides(colour = "none") +
+  labs(x = "Defier Percentage",
+       y = "P-Value",
+       title = "Power Simulation Results at Low Defier Proportion",
+       caption = "Note: Y-axis scale inverted. \n Dashed line indicates a p-value of 0.05.")
+
+simulations_power %>% 
+  filter(pct_defiers_true > 0) %>% 
+  ggplot(aes(x = pct_defiers_true,
+             y = pval_defier,
+             colour = model)) +
+  geom_point(alpha = 0.15,
+             aes(colour = model)) +
+  geom_hline(yintercept = 0.05, linetype = "longdash") +
+  geom_smooth(se = TRUE,
+              colour = "violetred",
+              alpha = 0.5) +
+  scale_y_continuous(trans = negative_log_trans(10)) +
+  scale_x_continuous(limits = c(0, 0.2), labels = scales::percent_format(accuracy = 1)) +
+  theme_minimal() +
+  facet_wrap(~model) +
+  guides(colour = "none") +
+  labs(x = "Defier Percentage",
+       y = "P-Value",
+       title = "Power Simulation Results at Low Defier Proportion",
+       caption = "Note: Y-Axis on negative log(10) scale. \n Dashed line indicates a p-value of 0.05")
+
+```
+
+
+```{r demonstration_plot_appendix}
+# REMOVE this one
+p <- simulations_power %>% 
+  filter(pct_defiers_true > 0) %>% 
+  ggplot(aes(x = mean_dydx,
+             y = pval_defier)) +
+  geom_point(alpha = 0.05) +
+  geom_smooth(method = lm, se = FALSE) +
+  scale_y_continuous(trans = negative_log_trans(10)) +
+  theme_minimal() +
+  guides(colour = "none") +
+  labs(x = "Mean Instrument Partial Effect",
+       y = "P-Value",
+       title = "Defier P-Value against Mean Instrument Partial Effect",
+       caption = "Note: Y-Axis on negative log(10) scale.")
+ggMarginal(p,  type = "histogram")
+```
+
+
+```{r mean_dydx_plot_appendix}
+
+
+p <- simulations_power %>% 
+  filter(pct_defiers_true > 0) %>% 
+  ggplot(aes(x = mean_dydx,
+             y = pval_defier,
+             colour = factor(sign(estimate)),
+             group = sign(estimate))) +
+  geom_point(alpha = 0.05) +
+  geom_smooth(method = lm, se = FALSE) +
+  scale_y_continuous(trans = negative_log_trans(10)) +
+  theme_minimal() +
+  guides(colour = "none") +
+  labs(x = "Mean Instrument Partial Effect",
+       y = "P-Value",
+       title = "Defier P-Value against Mean Instrument Partial Effect",
+       caption = "Note: Y-Axis on negative log(10) scale.")
+ggMarginal(p,
+           type = "histogram",
+           groupColour = TRUE,
+           groupFill = TRUE)
+
+
+```
+
+
+```{r binned_power_appendix}
+sim_bin <- simulations_power %>% 
+  group_by(model,
+           gr=cut(pct_defiers_true, breaks= seq(0, 1, by = 0.05))) %>% 
+  mutate(n= n()) %>%
+  arrange(as.numeric(gr)) %>% 
+  mutate(n_rejected = ifelse(pval_defier < 0.05, 1, 0)) %>% 
+  mutate(pct_rejected = sum(n_rejected)/n) 
+
+sim_bin_summ <- simulations_power %>% 
+  group_by(model,
+           gr=cut(pct_defiers_true, breaks= seq(0, 1, by = 0.05))) %>% 
+  mutate(n= n()) %>%
+  arrange(as.numeric(gr)) %>% 
+  mutate(n_rejected = ifelse(pval_defier < 0.05, 1, 0)) %>% 
+  summarise(pct_rejected = mean(n_rejected),
+            sd_rejected = sd(n_rejected),
+            n = unique(n),
+            mean_true_defier = mean(pct_defiers_true))
+
+
+sim_bin_summ %>% 
+  na.omit() %>% 
+  ggplot(aes(x = gr, y = pct_rejected, colour = model, group = model)) +
+  geom_point(aes(size = n)) + 
+  geom_line() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  guides(size = "none")  +
+  theme(legend.position = c(0.5, 0.2),
+        legend.background = element_rect(fill="lightgrey", 
+                                  size=0.5,  linetype = 0)) +
+  labs(y = "Proportion Null Rejected",
+       x = "Defier Proportion",
+       caption = "Note: Point size indicates number of draws in bin.",
+       title = "Power As a Function of Defier Proportion")
+
+sim_bin_summ %>%
+  na.omit() %>%
+  filter(mean_true_defier < 0.3) %>%
+  ggplot(aes(x = gr, y = pct_rejected, colour = model, group = model)) +
+  geom_point(aes(size = n)) +
+  geom_line() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  guides(size = "none") +
+    theme(legend.position = c(0.5, 0.2),
+        legend.background = element_rect(fill="lightgrey",
+                                  size=0.5,  linetype = 0)) +
+    labs(y = "Proportion Null Rejected",
+       x = "Defier Proportion",
+       caption = "Note: Point size indicates number of draws in bin.",
+       title = "Power As a Function of Defier Proportion")
+
+
+
+
+sim_bin %>% 
+  na.omit() %>% 
+  summarise(m_pval = mean(pval_defier),
+         sd_pval = sd(pval_defier)) %>% 
+  ggplot(aes(x = gr, y = m_pval, colour = model, group = model)) +
+  geom_point() + 
+  geom_line() + 
+  geom_linerange(aes(x = gr,
+                     ymin = m_pval - 1.96*sd_pval,
+                     ymax = m_pval + 1.96*sd_pval)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  guides(size = "none",
+         colour = "none") +
+  facet_wrap(~model) +
+    labs(y = "Mean P-Value",
+       x = "Defier Proportion",
+       caption = "Note: Dashed line indicates p-value of 0.05. \n 95% Confidence Intervals Displayed.",
+       title = "Mean P-Value as a Function of Defier Proportion") +
+  geom_hline(yintercept = 0.05,
+             linetype = "longdash",
+             alpha = 0.5) 
+
+sim_bin_summ %>% 
+  na.omit() %>% 
+  ggplot(aes(x = gr, y = pct_rejected, colour = model, group = model)) +
+  geom_point() + 
+  geom_line() + 
+  geom_linerange(aes(x = gr,
+                     ymin = pct_rejected - 1.96*sd_rejected,
+                     ymax = pct_rejected + 1.96*sd_rejected)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  guides(size = "none",
+         colour = "none") +
+  facet_wrap(~model) +
+    labs(y = "Proportion Null Rejected",
+       x = "Defier Proportion",
+       caption = "Note: Point size indicates number of draws in bin. \n 95% Confidence Intervals Displayed.",
+       title = "Power As a Function of Defier Proportion")
+
+```
+
+
+
+```{r}
+
+library(ggridges)
+
+
+sim_bin %>% 
+  na.omit() %>% 
+  ggplot(aes(x = pval_defier, y = gr, fill = gr)) +
+  geom_density_ridges() +
+  theme_ridges() +
+  guides(fill = "none") +
+  scale_x_continuous(trans = negative_log_trans(10)) +
+  labs(y = "Defier Proportion",
+       x = "P-Value",
+       title = "P-Value distribution as Defier Proportion Changes",
+       caption = "Note: X-Axis on negative log(10) scale.")
+
+
+
+
+```
+
+
 # References
+
+
