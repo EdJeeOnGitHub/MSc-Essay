@@ -29,7 +29,7 @@ knitr::opts_chunk$set(echo = TRUE,
 &nbsp;
 &nbsp;
 
-The LATE theorem is a cornerstone of identification in economics and labour economists in particular have popularised and preached its virtues. Considering the theorem's importance relatively little effort has been expended ensuring the theorem's assumptions are met in the dataset in question. This paper aims to promote a practical methodology that can be incorporated into current instrumental variables workflow in order to clearly aid researchers in verifying that necessary, but not sufficient, conditions are met empirically in the sample.
+The LATE theorem is a cornerstone of identification in economics and labour economists in particular have popularised and preached its virtues. Considering the theorem's importance relatively little effort has been expended ensuring the theorem's assumptions are met in the dataset in question. This essay aims to promote a practical methodology that can be incorporated into current instrumental variables workflow in order to clearly aid researchers in verifying that necessary, but not sufficient, conditions are met empirically in the sample.
 
 Checking that the first stage "goes the right way" through the use of interaction terms or subsampling is common knowledge amongst applied practitioners but rarely discussed in depth. I formalise this notion and present some novel contributions of potential interest to social science researchers using saturated first stage regressions, multiple comparison adjustments and negative log-log $p$-value transforms popularised by genome wide association studies (GWAS) to present visually striking evidence for or against monotonicity. Next, I show how advances in causal econometric inference using machine learning techniques, developed by @Wager_and_Athey, can be adapted to estimate the underlying first-stage heterogeneity and provide an alternative to the saturated regression model. I explore the power of the two tests in simulation studies in comparison to @RESTAT's monotonicity test and find XYZ. Finally, I take the tests to the data by applying the methodologies to various seminal papers in labour economics and fail to find significant evidence of defiers.
 
@@ -50,7 +50,7 @@ The LATE assumptions are:
 1. Independence. $\{Y_i(D_{1i}, 1), Y_i(D_{0i}, 0), D_{1i}, D_{0i}\}\  \amalg  \ Z_i$.
 2. Exclusion. $Y_i(d, 0) = Y_i(d, 1) = Y_{di}  \ \text{for} \ d = 0,1$.
 3. First-Stage. $E[D_{1i} - D_{0i}] \neq 0$.
-4. Monotonicity. $D_{1i} - D_{0i} \geq 0 \ \forall \ i \ \text{or vice versa.}$^[For simplicity the rest of the paper assumes $D_{1i} - D_{0i} \geq 0$ unless explicitly stated otherwise.]
+4. Monotonicity. $D_{1i} - D_{0i} \geq 0 \ \forall \ i \ \text{or vice versa.}$^[For simplicity the rest of the essay assumes $D_{1i} - D_{0i} \geq 0$ unless explicitly stated otherwise.]
 
 
 Under assumptions 1-4:
@@ -89,7 +89,7 @@ $$
 D_i = \pi_0 + \pi_{1i}Z_i + \sum_{k=1}^K (\gamma_{ki}x_{ki} +  \delta_{ki}(Z_i \times x_{ki})) + \epsilon_i
 $$
 
-where $x_{ki}$ is a vector of $K$ observed covariates. Differentiation with respect to the instrument $Z_i$ gives:
+where $x_{ki}$ is a vector of $K$ observed covariates. Differentiation^[Or equivalently, taking differences in the binary case.] with respect to the instrument $Z_i$ gives:
 
 $$
 \frac{\partial D_i}{\partial Z_i} = \pi_{1i} + \sum_{k=1}^K \delta_{ki}x_{ki}
@@ -103,9 +103,9 @@ $$
   H_{1i}: \frac{\partial D_i}{\partial Z_i} = \pi_{1i} + \sum_{k=1}^K \delta_{ki}x_{ki} &< 0
 \end{aligned}
 $$
-In the binary covariate case we could simply estimate the saturated model and test each partial derivative separately - one for $m = 1$ and another for $m = 0$. Moving to the continuous case is essentially the same however now we have as many partial derivatives we wish to test as datapoints - our hypotheses are indexed by $i$ because LATE theorem assumption 4 require monotonicity for all $i$ - the partial derivative, $\frac{\partial D_i}{\partial Z_i}$ must be positive for all $i$.
+In the binary covariate case we could simply estimate the saturated model and test each partial derivative separately - one for $m = 1$ and another for $m = 0$. Moving to the continuous case is essentially the same however now we have as many partial derivatives we wish to test as datapoints - our hypotheses are indexed by $i$ because unlike the discrete covariate case, every individual takes a unique $X_i$ value. Furthermore, LATE theorem assumption 4 require monotonicity for all $i$ - the partial derivative, $\frac{\partial D_i}{\partial Z_i}$ must be positive for all $i$.
 
-Therefore, our monotonicity test neatly corresponds with the set, or complete, null [@cite_Shaffer_or_Westfall-Young_or_someone_here]:
+Therefore, our monotonicity test neatly corresponds with the set, or complete, null [@shaffer]:
 
 $$
 \begin{aligned}
@@ -115,24 +115,18 @@ $$
 $$
 
 
-Any test of this nature immediately faces two problems. First, there must be control of the family wise error rate (FWER) in the face of $N$ simultaneous statistical inferences and second we must be confident of test power when performing $N$ inferences based off $N$ datapoints.
+Any test of this nature immediately faces two problems. First, we must consider whether control of the family wise error rate (FWER) in the face of $N$ simultaneous statistical inferences is necessary. Second, we must be confident of test power when performing $N$ inferences based off $N$ datapoints.
+
+Fortunately, our tests are logically related - if we fail to reject the most statistically significant defier this implies we must fail to reject the next significant defier and so on. Likewise, if we do reject the null hypothesis and conclude there's evidence of a defier, considering the most adverse test statistic to the null, then our job is done - we only require evidence of _one_ defier to conclude monotonicity has failed. 
+
+The above can be reformulated through consideration of hypothesis hierarchy and __closure principle__ of testing. The highest hypothesis in the closed hierarchy of hypotheses considered is the complete intersection null $H_0^C: \cap_{i \in N} \pi_{1i} + \sum_{k=1}^K \delta_{ki}x_{ki} = 0$ however, immediately below this is the set of minimal hypotheses and it's sufficient to reject just one of these minimal hypotheses to reject, essentially, our set null and question of interest. In other words, we can merely focus on the smallest $p$-value in a given dataset.
+
+Searching for the most adverse test-static, almost conditioning on significance, seems like a guaranteed way to introduce "fishing" or "$p$-hacking" - to ease such concerns I present a rigorous array of power and size simulations and show that a Romano-Wolf adjustment, which lets the data speak to hypothesis dependency through resampling, is far too conservative for the problem at hand.
 
 
+Moving onto our second concern, test power; the model parameters are well-identified since whilst we're testing $N$ hypotheses, the number of effective parameters we wish to estimate are much lower in fact, only $2K + 1$. The problem can be reconceptualised as constructing prediction intervals for the partial derivates which, whilst heterogeneous, only vary at the subgroup level. This reduction in granularity speaks to the trade-off inherent in heterogeneous causal identification. Whilst we may believe treatment effects vary at the individual level, using conventional methods in the cross-section, we can only identify an average treatment effect for observed subgroups - later in the essay I attempt to use @Wager_and_Athey's causal random forest to address this limitation. 
 
-THIS BIT IS WRONG REWRITE IT.
-
-Fortunately, step-down multiple testing corrections such as Romano-Wolf offer strong control of the FWER and are particularly suited to this problem.
-
-At first glance, a multiple testing correction for $N$ hypotheses seems overly conservative - it seems intuitive to argue that under positive estimates of $\hat{\gamma}$ and $\hat{\delta}$ and a failure to reject the null hypothesis for small/negative covariate values then we certainly fail to reject the null hypothesis for very large positive covariate values i.e. large covariate values are already accounted for under the _closure_ principal of hypothesis testing.
-
-However, this intuition is slightly off - each individual with a different covariate value is essentially representing a different subgroup in the data and since we have no reason a priori to believe that these individuals will have the same heterogeneous treatment effect as a lower valued covariate individual we cannot infer anything about higher valued covariate hypotheses using lower valued covariate counterparts. On the other hand, the intuition above lends itself to a step-down, rather than single step, control procedure. In short, we improve test power by ordering $p$-values, which are increasing in the estimated partial derivative, and updating our adjustment rule.  
-
-
-
-The model parameters are well-identified since whilst we're testing $N$ hypotheses, the number of effective parameters we wish to estimate are much lower in fact, only $2K + 1$. The problem can be reconceptualised as constructing prediction intervals for the partial derivates which, whilst heterogeneous, only vary at the subgroup level. This reduction in granularity speaks to the trade-off inherent in heterogeneous causal identification. Whilst we may believe treatment effects vary at the individual level, using conventional methods in the cross-section, we can only identify an average treatment effect for observed subgroups - later in the essay I attempt to use @Wager_and_Athey's causal random forest to address this limitation. 
-
-In conclusion, the first stage interaction test involves estimating the saturated regression and forming multiplicity adjusted one-sided test statistics for the partial derivative $\frac{ \hat{\partial D_i}}{ \hat{\partial Z_i}}$. 
-
+In conclusion, the first stage interaction test involves estimating the saturated regression and forming multiplicity adjusted one-sided test statistics for the partial derivative $\frac{ \hat{\partial D_i}}{ \hat{\partial Z_i}}$ and finding the most adverse test statistic/minimum $p$-value.
 
 ```{r first_stage_test_function}
 library(Rfast)
@@ -359,7 +353,7 @@ simulation_func <- function(x, force_positive = FALSE){
 
 
 
-Model parameters are drawn from a uniform distribution with support from -1 to 1. Rather than explicitly generating a positive main effect and defiers at given proportions I let the random draws determine the simulated data properties and discretise the data into 5\% defier bins - this gives good coverage of the defier space up to concentrations of 40\%. However, past 40\% the simulations become particularly uninformative - there's very few simulation draws in this region, typically 1\% of all draws due to the nature of the DGP used. Furthermore, the distinction between defier and complier becomes murky when approaching an even split in the population - if this situation arises in practice it's questionable whether LATE really is the estimator of interest to a researcher.
+Model parameters are drawn from a uniform distribution with support from -1 to 1. Rather than explicitly generating a positive main effect and defiers at given proportions I let the random draws determine the simulated data properties and discretise the data into 1\% defier bins - this gives good coverage of the defier space up to concentrations of 40\%. However, past 40\% the simulations become particularly uninformative - there's very few simulation draws in this region, typically 1\% of all draws due to the nature of the DGP used. Furthermore, the distinction between defier and complier becomes murky when approaching an even split in the population - if this situation arises in practice it's questionable whether LATE really is the estimator of interest to a researcher.
 
 ```{r power_simulation}
 coef_matrix <- matrix(runif(100*10, -1, 1), 100, 10)
@@ -398,7 +392,16 @@ if (run_sim) {
   # write.csv(simulations_power, file = "power_simulations.csv", row.names = FALSE)
   # write.csv(simulations_power, file = "power_simulations_both.csv", row.names = FALSE)  
 } else {
-  simulations_power <- readr::read_csv("C:/Users/edjee/Dropbox/Ed/power_simulations_both_large.csv")
+  simulations_power_large <- readr::read_csv("C:/Users/edjee/Dropbox/Ed/power_simulations_both_large.csv") %>% 
+    mutate(N = "Large")
+  simulations_power_medium <- readr::read_csv("C:/Users/edjee/Dropbox/Ed/power_simulations_both_medium.csv") %>% 
+    mutate(N = "Medium")
+  simulations_power_small <- readr::read_csv("C:/Users/edjee/Dropbox/Ed/power_simulations_both_small.csv") %>% 
+    mutate(N = "Small")
+  simulations_power <- bind_rows(simulations_power_small,
+                                 simulations_power_medium,
+                                 simulations_power_large) %>% 
+    mutate(N = factor(N, levels = c("Small", "Medium", "Large")))
 }
 
 simulations_power <- simulations_power %>% 
@@ -407,7 +410,7 @@ simulations_power <- simulations_power %>%
 ```
 
 
-```{r p_value_normal_scale_plot}
+```{r p_value_normal_scale_plot, fig.height=10, fig.width=10}
 library(scales)
 negative_log_trans <- function(base = exp(1)) {
   trans <- function(x) -log(x, base)
@@ -417,25 +420,6 @@ negative_log_trans <- function(base = exp(1)) {
             domain = c(1e-100, Inf))
 }
 
-## Remove this one
-simulations_power %>% 
-  filter(pct_defiers_true > 0) %>% 
-  ggplot(aes(x = pct_defiers_true,
-             y = pval_defier,
-             colour = model)) +
-  geom_point(alpha = 0.15) +
-  geom_hline(yintercept = 0.05,
-             linetype = "longdash",
-             alpha = 0.5) +
-  guides(colour = "none") +
-  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
-  facet_wrap(~model) +
-  labs(x = "Defier Percentage",
-       y = "P-Value",
-       caption = "Note: Dashed line indicates a p-value of 0.05.",
-       title = "P-Values from Power Simulations") +
-  theme_minimal()
-
 
 simulations_power %>% 
   filter(pct_defiers_true > 0) %>% 
@@ -449,7 +433,7 @@ simulations_power %>%
   guides(colour = "none") +
   scale_y_reverse() +
   scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
-  facet_wrap(~model) +
+  facet_grid(N~model) +
   labs(x = "Defier Percentage",
        y = "P-Value",
        caption = "Note: Y-axis scale inverted. \n Dashed line indicates a p-value of 0.05.",
@@ -458,14 +442,23 @@ simulations_power %>%
 ```
 
 
-```{r p_val_power_neg_log_10}
+Throughout the essay I use an inverted y-axis when displaying $p$-values - the reason for this is two-fold. First, when considering thousands of $p$-values, as we are in this essay, it's common to use a negative log transform, popularised by biostatistics and genome studies. Displaying the "most significant" $p$-values at the very top of the visualisation makes better use of the space in a figure - we care less about the null hypothesis $p$-values we're least able to reject. Secondly, inverting the y-axis maintains consistency when we move to the negative log transform rather than switching between visualisation paradigms.
+
+It's clear from the above figure that at even moderate defier levels both tests are extremely powerful. When considering the saturated first stage test this is hardly surprising - it has long been acknowledged that testing whether a first stage "goes the right way" using sub-samples or interaction terms is a valid test of monotonicity and we'd expect test properties to be similar to standard frequentist testing of OLS.
+
+The random forest method, too, performs surprisingly well - even better than the saturated first stage test it would seem at first glance. Both tests improve substantially as sample size increases and as defier proportion increases as we'd expect.
+
+
+
+```{r p_val_power_neg_log_10, fig.height=10, fig.width=10}
 
 simulations_power %>% 
+  unite(mod_N, model, N, remove = FALSE) %>% 
   filter(pct_defiers_true > 0) %>% 
   ggplot(aes(x = pct_defiers_true,
              y = pval_defier,
-             colour = model)) +
-  geom_point(alpha = 0.15) +
+             group = mod_N)) +
+  geom_point(alpha = 0.15, aes(colour = model)) +
   geom_hline(yintercept = 0.05,
              linetype = "longdash",
              alpha = 0.5) +
@@ -473,36 +466,23 @@ simulations_power %>%
   scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
   guides(colour = "none") +
   theme_minimal() +
-  facet_wrap(~model) +
+  facet_grid(N~model, scales = "free_y") +
   labs(x = "Defier Percentage",
        y = "P-Value",
-       caption = "Note: Y-Axis on negative log(10) scale. \n Dashed line indicates a p-value of 0.05",
-       title = "P-Values from Power Simulations")
-
-
-## Remove this one
-simulations_power %>% 
-  filter(pct_defiers_true > 0 & pval_defier > 1e-80) %>% 
-  ggplot(aes(x = pct_defiers_true,
-             y = pval_defier,
-             colour = model)) +
-  geom_point(alpha = 0.15) +
-  geom_hline(yintercept = 0.05,
-             linetype = "longdash",
-             alpha = 0.5) +
-  scale_y_continuous(trans = negative_log_trans(10)) +
-  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
-  guides(colour = "none") +
-  theme_minimal() +
-  facet_wrap(~model) +
-  labs(x = "Defier Percentage",
-       y = "P-Value",
-       caption = "Note: Y-Axis on negative log(10) scale. \n Dashed line indicates a p-value of 0.05",
-       title = "P-Values from Power Simulations")
+       caption = "Note: Y-Axis on negative log(10) scale. \n Dashed line indicates a p-value of 0.05. \n Line of best fit in purple.",
+       title = "P-Values from Power Simulations") +
+  geom_smooth(method = lm,
+              se = FALSE,
+              alpha = 0.2,
+              colour = "violetred")
 
 ```
 
-```{r p_val_low_defier_plot}
+The difference between the figure above and its predecessor clearly motivates the use of a log transform. It's worth noting that each y-axis is on a different scale, on the larger dataset the tests produce $p$-values orders of magnitude smaller than the medium and small dataset.
+
+Even at low levels of defiers the tests perform well, only the smallest dataset struggles to identify defiers.  
+
+```{r p_val_low_defier_plot, fig.height=10, fig.width=10}
 simulations_power %>% 
   filter(pct_defiers_true > 0) %>% 
   ggplot(aes(x = pct_defiers_true,
@@ -515,60 +495,24 @@ simulations_power %>%
   geom_smooth(se = TRUE,
               colour = "violetred",
               alpha = 0.5) +
-  scale_x_continuous(limits = c(0, 0.2), labels = scales::percent_format(accuracy = 1)) +
+  scale_x_continuous(limits = c(0, 0.1), labels = scales::percent_format(accuracy = 1)) +
   theme_minimal() +
-  facet_wrap(~model) +
+  facet_grid(N~model, scales = "free_y") +
   guides(colour = "none") +
   labs(x = "Defier Percentage",
        y = "P-Value",
        title = "Power Simulation Results at Low Defier Proportion",
        caption = "Note: Y-axis scale inverted. \n Dashed line indicates a p-value of 0.05.")
 
-simulations_power %>% 
-  filter(pct_defiers_true > 0) %>% 
-  ggplot(aes(x = pct_defiers_true,
-             y = pval_defier,
-             colour = model)) +
-  geom_point(alpha = 0.15,
-             aes(colour = model)) +
-  geom_hline(yintercept = 0.05, linetype = "longdash") +
-  geom_smooth(se = TRUE,
-              colour = "violetred",
-              alpha = 0.5) +
-  scale_y_continuous(trans = negative_log_trans(10)) +
-  scale_x_continuous(limits = c(0, 0.2), labels = scales::percent_format(accuracy = 1)) +
-  theme_minimal() +
-  facet_wrap(~model) +
-  guides(colour = "none") +
-  labs(x = "Defier Percentage",
-       y = "P-Value",
-       title = "Power Simulation Results at Low Defier Proportion",
-       caption = "Note: Y-Axis on negative log(10) scale. \n Dashed line indicates a p-value of 0.05")
-
 ```
 
 
-```{r demonstration_plot}
-# REMOVE this one
-p <- simulations_power %>% 
-  filter(pct_defiers_true > 0) %>% 
-  ggplot(aes(x = mean_dydx,
-             y = pval_defier)) +
-  geom_point(alpha = 0.05) +
-  geom_smooth(method = lm, se = FALSE) +
-  scale_y_continuous(trans = negative_log_trans(10)) +
-  theme_minimal() +
-  guides(colour = "none") +
-  labs(x = "Mean Instrument Partial Effect",
-       y = "P-Value",
-       title = "Defier P-Value against Mean Instrument Partial Effect",
-       caption = "Note: Y-Axis on negative log(10) scale.")
-ggMarginal(p,  type = "histogram")
-```
-
+In the figure below we can see that as mean partial effect moves away from 0, for both positive and negative first stages, it gets harder and harder to detect defiers.
 
 ```{r mean_dydx_plot}
+library(RColorBrewer)
 p <- simulations_power %>% 
+  filter(N == "Large") %>% 
   filter(pct_defiers_true > 0) %>% 
   ggplot(aes(x = mean_dydx,
              y = pval_defier,
@@ -578,32 +522,44 @@ p <- simulations_power %>%
   geom_smooth(method = lm, se = FALSE) +
   scale_y_continuous(trans = negative_log_trans(10)) +
   theme_minimal() +
-  guides(colour = "none") +
   labs(x = "Mean Instrument Partial Effect",
        y = "P-Value",
        title = "Defier P-Value against Mean Instrument Partial Effect",
-       caption = "Note: Y-Axis on negative log(10) scale.")
+       caption = "Note: Y-Axis on negative log(10) scale. Large dataset only.") +
+  scale_colour_manual(values = c("#999999", "#E69F00"),
+                      name = "Sign of First Stage:",
+                      breaks = c("-1", "1"),
+                      labels = c("-ve", "+ve")) +
+  theme(legend.position = "bottom")
+
 ggMarginal(p,
            type = "histogram",
            groupColour = TRUE,
-           groupFill = TRUE)
+           groupFill = TRUE) 
 
 
 ```
 
 
-```{r binned_power}
+
+
+Power increases as defier proportion increases
+
+```{r binned_power, fig.height=10, fig.width=10}
 sim_bin <- simulations_power %>% 
+  mutate(gr=cut(pct_defiers_true, labels = FALSE, breaks= seq(0, 1, by = 0.01))/100) %>% 
   group_by(model,
-           gr=cut(pct_defiers_true, breaks= seq(0, 1, by = 0.05))) %>% 
+           N,
+           gr) %>%
   mutate(n= n()) %>%
-  arrange(as.numeric(gr)) %>% 
+  arrange(gr) %>% 
   mutate(n_rejected = ifelse(pval_defier < 0.05, 1, 0)) %>% 
   mutate(pct_rejected = sum(n_rejected)/n) 
 
 sim_bin_summ <- simulations_power %>% 
   group_by(model,
-           gr=cut(pct_defiers_true, breaks= seq(0, 1, by = 0.05))) %>% 
+           N,
+           gr=cut(pct_defiers_true,label = FALSE, breaks= seq(0, 1, by = 0.01))) %>% 
   mutate(n= n()) %>%
   arrange(as.numeric(gr)) %>% 
   mutate(n_rejected = ifelse(pval_defier < 0.05, 1, 0)) %>% 
@@ -613,46 +569,34 @@ sim_bin_summ <- simulations_power %>%
             mean_true_defier = mean(pct_defiers_true))
 
 
-sim_bin_summ %>% 
+sim_bin %>% 
   na.omit() %>% 
+  filter(pct_defiers_true < 0.35) %>% 
   ggplot(aes(x = gr, y = pct_rejected, colour = model, group = model)) +
-  geom_point(aes(size = n)) + 
+  geom_point() + 
   geom_line() +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
   guides(size = "none")  +
-  theme(legend.position = c(0.5, 0.2),
-        legend.background = element_rect(fill="lightgrey", 
-                                  size=0.5,  linetype = 0)) +
+  theme(legend.position = "bottom") +
   labs(y = "Proportion Null Rejected",
        x = "Defier Proportion",
        caption = "Note: Point size indicates number of draws in bin.",
-       title = "Power As a Function of Defier Proportion")
+       title = "Power As a Function of Defier Proportion") +
+  facet_wrap(~N, ncol = 1) +
+  scale_x_continuous(breaks = seq(from = 0, 1, 0.05),
+                     labels = scales::percent_format(accuracy = 1))
 
-# sim_bin_summ %>% 
-#   na.omit() %>% 
-#   filter(mean_true_defier < 0.3) %>% 
-#   ggplot(aes(x = gr, y = pct_rejected, colour = model, group = model)) +
-#   geom_point(aes(size = n)) + 
-#   geom_line() +
-#   theme_minimal() +
-#   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-#   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-#   guides(size = "none") +
-#     theme(legend.position = c(0.5, 0.2),
-#         legend.background = element_rect(fill="lightgrey", 
-#                                   size=0.5,  linetype = 0)) +
-#     labs(y = "Proportion Null Rejected",
-#        x = "Defier Proportion",
-#        caption = "Note: Point size indicates number of draws in bin.",
-#        title = "Power As a Function of Defier Proportion")
+
+```
 
 
 
-
+Mean pval gets smaller.
+```{r pval_mean_plot, fig.height=10, fig.width=10}
 sim_bin %>% 
   na.omit() %>% 
+  filter(pct_defiers_true < 0.35) %>% 
   summarise(m_pval = mean(pval_defier),
          sd_pval = sd(pval_defier)) %>% 
   ggplot(aes(x = gr, y = m_pval, colour = model, group = model)) +
@@ -662,59 +606,40 @@ sim_bin %>%
                      ymin = m_pval - 1.96*sd_pval,
                      ymax = m_pval + 1.96*sd_pval)) +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
   guides(size = "none",
          colour = "none") +
-  facet_wrap(~model) +
+  facet_grid(N~model) +
     labs(y = "Mean P-Value",
        x = "Defier Proportion",
        caption = "Note: Dashed line indicates p-value of 0.05. \n 95% Confidence Intervals Displayed.",
        title = "Mean P-Value as a Function of Defier Proportion") +
   geom_hline(yintercept = 0.05,
              linetype = "longdash",
-             alpha = 0.5) 
+             alpha = 0.5) +
+  scale_y_reverse() +
+  scale_x_continuous(breaks = seq(from = 0,
+                                  to = 1,
+                                  0.1),
+                     labels = scales::percent_format(accuracy = 1))
+  
 
-sim_bin_summ %>% 
-  na.omit() %>% 
-  ggplot(aes(x = gr, y = pct_rejected, colour = model, group = model)) +
-  geom_point() + 
-  geom_line() + 
-  geom_linerange(aes(x = gr,
-                     ymin = pct_rejected - 1.96*sd_rejected,
-                     ymax = pct_rejected + 1.96*sd_rejected)) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-  guides(size = "none",
-         colour = "none") +
-  facet_wrap(~model) +
-    labs(y = "Proportion Null Rejected",
-       x = "Defier Proportion",
-       caption = "Note: Point size indicates number of draws in bin. \n 95% Confidence Intervals Displayed.",
-       title = "Power As a Function of Defier Proportion")
-
-```
-
-
-
-```{r}
-
-library(ggridges)
-
-
-sim_bin %>% 
-  na.omit() %>% 
-  ggplot(aes(x = pval_defier, y = gr, fill = gr)) +
-  geom_density_ridges() +
-  theme_ridges() +
-  guides(fill = "none") +
-  scale_x_continuous(trans = negative_log_trans(10)) +
-  labs(y = "Defier Proportion",
-       x = "P-Value",
-       title = "P-Value distribution as Defier Proportion Changes",
-       caption = "Note: X-Axis on negative log(10) scale.")
-
-
+# sim_bin_summ %>% 
+#   ggplot(aes(x = gr, y = pct_rejected, colour = model, group = model)) +
+#   geom_point() + 
+#   geom_line() + 
+#   geom_linerange(aes(x = gr,
+#                      ymin = pct_rejected - 1.96*sd_rejected,
+#                      ymax = pct_rejected + 1.96*sd_rejected)) +
+#   theme_minimal() +
+#   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+#   guides(size = "none",
+#          colour = "none") +
+#   facet_grid(N~model) +
+#     labs(y = "Proportion Null Rejected",
+#        x = "Defier Proportion",
+#        caption = "Note: Point size indicates number of draws in bin. \n 95% Confidence Intervals Displayed.",
+#        title = "Power As a Function of Defier Proportion")
+  
 
 ```
 
