@@ -2,7 +2,7 @@
 title: "Detecting Defiers: An Empirical Investigation"
 author: "Ed Jee"
 date: "22 January 2019"
-abstract: "I present some practical tests for detecting failure of the monotonicity assumption essential for causal identification under the LATE theorem. Simulations show mixed results for the Bayesian and Random Forest methods whilst the traditional practice of checking heterogeneous first stage treatment effects performs best. I apply these tests to a sample of papers in labour economics using instrumental variables estimation with an emphasis on visualisation and exploration rather than rigid adherence to Fisher hypothesis testing methods although these are supplied as well."
+abstract: "I present some practical tests for detecting failure of the monotonicity assumption essential for causal identification under the LATE theorem. Simulations show impressive results for the saturated first stage and Random Forest methods. I apply these tests to a sample of papers in labour economics using instrumental variables estimation with an emphasis on visualisation and exploration rather than rigid adherence to Fisher hypothesis testing methods although these are supplied as well."
 output:
     html_document:
       code_folding: hide
@@ -31,7 +31,7 @@ knitr::opts_chunk$set(echo = TRUE,
 
 The LATE theorem is a cornerstone of identification in economics and labour economists in particular have popularised and preached its virtues. Considering the theorem's importance relatively little effort has been expended ensuring the theorem's assumptions are met in the dataset in question. This essay aims to promote a practical methodology that can be incorporated into current instrumental variables workflow in order to clearly aid researchers in verifying that necessary, but not sufficient, conditions are met empirically in the sample.
 
-Checking that the first stage "goes the right way" through the use of interaction terms or subsampling is common knowledge amongst applied practitioners but rarely discussed in depth. I formalise this notion and present some novel contributions of potential interest to social science researchers using saturated first stage regressions, multiple comparison adjustments and negative log-log $p$-value transforms popularised by genome wide association studies (GWAS) to present visually striking evidence for or against monotonicity. Next, I show how advances in causal econometric inference using machine learning techniques, developed by @Wager_and_Athey, can be adapted to estimate the underlying first-stage heterogeneity and provide an alternative to the saturated regression model. I explore the power of the two tests in simulation studies in comparison to @RESTAT's monotonicity test and find XYZ. Finally, I take the tests to the data by applying the methodologies to various seminal papers in labour economics and fail to find significant evidence of defiers.
+Checking that the first stage "goes the right way" through the use of interaction terms or subsampling is common knowledge amongst applied practitioners but rarely discussed in depth. I formalise this notion and present some novel contributions of potential interest to social science researchers using saturated first stage regressions and negative log-log $p$-value transforms popularised by genome wide association studies (GWAS) to present visually striking evidence for or against monotonicity. Next, I show how advances in causal econometric inference using machine learning techniques, developed by @Wager_and_Athey, can be adapted to estimate the underlying first-stage heterogeneity and provide an alternative to the saturated regression model. I explore the power of the two tests in simulation studies in comparison to @RESTAT's monotonicity test and find XYZ. Finally, I take the tests to the data by applying the methodologies to various seminal papers in labour economics and fail to find significant evidence of defiers.
 
 # The LATE Theorem
 
@@ -119,7 +119,9 @@ Any test of this nature immediately faces two problems. First, we must consider 
 
 Fortunately, our tests are logically related - if we fail to reject the most statistically significant defier this implies we must fail to reject the next significant defier and so on. Likewise, if we do reject the null hypothesis and conclude there's evidence of a defier, considering the most adverse test statistic to the null, then our job is done - we only require evidence of _one_ defier to conclude monotonicity has failed. 
 
-The above can be reformulated through consideration of hypothesis hierarchy and __closure principle__ of testing. The highest hypothesis in the closed hierarchy of hypotheses considered is the complete intersection null $H_0^C: \cap_{i \in N} \pi_{1i} + \sum_{k=1}^K \delta_{ki}x_{ki} = 0$ however, immediately below this is the set of minimal hypotheses and it's sufficient to reject just one of these minimal hypotheses to reject, essentially, our set null and question of interest. In other words, we can merely focus on the smallest $p$-value in a given dataset.
+
+Another way to consider the above is through consideration of the __closure principle__ of hypothesis testing. The closure of a set is the collection of hypotheses in the original set along with all distinct hypotheses formed by intersections of hypotheses in the set. When we consider just the null hypothesis of monotonicity using the most extreme defier possible, the null hypothesis of the second most extreme defier and so on is _already_ included in the closure of the set - therefore any closed multiple testing procedure considering $N$ hypotheses is effectively double counting our inferences and leading to too conservative an adjustment.
+
 
 Searching for the most adverse test-static, almost conditioning on significance, seems like a guaranteed way to introduce "fishing" or "$p$-hacking" - to ease such concerns I present a rigorous array of power and size simulations and show that a Romano-Wolf adjustment, which lets the data speak to hypothesis dependency through resampling, is far too conservative for the problem at hand.
 
@@ -213,14 +215,11 @@ run_first_stage_interactions_fast <- function(dataset, dependent_variable, instr
 
 
 
-## Random Forest
+## Honest Causal Forest
 
-[Regression Tree](https://commons.wikimedia.org/wiki/File:Cart_tree_kyphosis.png#/media/File:Cart_tree_kyphosis.png)
+Honest causal forest [@Athey7353; @Athey_Wager_Tibshirani; @Wager_and_Athey] attempts to estimate heterogeneous treatment effects through the use of random forest methods. In short, an honest regression tree is fit; honesty and eventual unbiasedness comes from splitting the data into two samples. One sample is used to fit the tree and another sample to decide tree splits or partitions. At the end of the tree the fit sample is dispersed into separate leaves and heterogeneous causal effects are estimated.
 
-Random forest is this but with bagging, bootstrapped aggregation, and some other stuff to prevent overfitting.
-
-
-Causal Random Forest is the above but with slightly different decision rules to ensure causal estimates.
+Individual trees are likely to overfit, to overcome this bootstrapped aggregation (bagging) is used to fit many trees using bootstrapped samples - hence a random forest.
 
 ## Simulations
 
@@ -453,7 +452,7 @@ The difference between the figure using a linear scale and $p$-values displayed 
 
 
 ```{r p_val_power_neg_log_10, fig.height=10, fig.width=10}
-
+library(tidyr)
 simulations_power %>% 
   unite(mod_N, model, N, remove = FALSE) %>% 
   filter(pct_defiers_true > 0) %>% 
@@ -671,7 +670,7 @@ sim_bin %>%
 
 ### Size Simulations
 
-
+Test size, typically denoted by $\alpha$, is set by the analyst and corresponds to the probability of incorrectly rejecting a true null hypothesis. When performing simultaneous inferences a common concern is that test properties at the individual level, usually an error rate, no longer hold on aggregate. To combat this concern we now examine test size using 2000 simulation draws under the null hypothesis - where no defiers are present. Rather than simulate this for all three datasets I simply use the smallest in order to save on computational cost.
 
 
 ```{r size_sims}
@@ -711,9 +710,10 @@ simulations_size <- simulations_size %>%
   mutate(model = tools::toTitleCase(model))
 ```
 
-To address any concerns of multiple testing we now examine test size using simulations under the null hypothesis - where no defiers are present. Rather than simulate this for all three datasets I simply use the smallest in order to save on computational cost.
+Conventionally, under the null hypothesis we'd expect the distribution of $p$-values to be uniformly distributed on the interval 0, 1. However, this is only the case under the __two-sided__ null. Therefore, in this essay we'd expect $p$-values to have greater density near 1 - intuitively, there are many large, positive partial effects, "deep in the null" to quote @westfall, that contribute to this bunching behaviour.
 
-```{r}
+The histogram below reflects this expected behaviour - fortunately, graphically at least, there's little to no evidence that test size isn't adequately controlled.
+```{r size_hist}
 
 simulations_size %>% 
   ggplot(aes(x = pval_defier,
@@ -724,8 +724,18 @@ simulations_size %>%
   guides(fill = "none") +
   labs(x = "P-Value",
        title = "P-Value Distribution Under One-Sided Null")
+```
 
 
+In the figure below I introduce a visualisation technique possibly unfamiliar to most economists. The empirical CDF of $p$-values is plotted against its theoretical (uniform) quantiles on the negative log scale. The diagonal black line indicates perfect equality between the empirical and theoretical CDF.
+
+Under a two-sided true null hypothesis we'd expect $p$-values to closely follow the line of equality - with a one-sided hypothesis the interpretation is unfortunately a little less clear-cut.
+
+A strong, positive first stage would result in a near horizontal empirical CDF - almost every $p$-value is close to 1 since the hypothesis of negative effects is firmly rejected. If there are defiers present we'd observe the empirical CDF "curve back" towards the null hypothesis or even cross the line of equality. 
+
+This exercise, whilst not offering a definitive answer to defier presence, is useful to an applied researcher. Later in the essay, when we take the tests to the data we can visualise the strength of the instrument's effect on inducing compliers to take up treatment, in a normalised manner invariant to scale effects, and also get a sense of how this strength varies heterogeneously within the sample or even whether there's initial evidence of defiance.
+
+```{r ecdf_unif_size}
 simulations_size %>% 
   filter(pct_defiers_true == 0) %>% 
   ggplot(aes(sample = pval_defier,
@@ -738,9 +748,13 @@ simulations_size %>%
   theme_minimal() +
   guides(colour = "none") +
   labs(title = "QQ plot of Simulated P-values",
-       subtitle = "Negative Log(10) Scale")
+       caption = "Note: Both axes use a negative log(10) scale.")
+
+```
 
 
+size checks table here.
+```{r checks_size}
 simulations_size %>% 
   filter(pval_defier < 0.05) %>% 
   summarise(n = nrow(.),
@@ -753,6 +767,10 @@ simulations_size %>%
 
 
 #### Romano-Wolf
+
+Romano-Wolf stuff here.
+
+
 
 # Data and Replication
 
@@ -1739,7 +1757,7 @@ first_stage_interactions_ADH_manu %>%
 ```
 
 
-# Random Forest
+# Honest Causal Forest
 
 
 Write up about methodology and simulation performance
