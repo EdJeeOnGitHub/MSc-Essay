@@ -227,14 +227,14 @@ Causal Random Forest is the above but with slightly different decision rules to 
 
 ### Power Simulations
 
-I generate 2000 draws of the data, with 1,000, 5,000 and 10,000 observations respectively, using the following data generating process:
+Test power is the ability of a test to correctly reject a null hypothesis. Classical frequentist testing in econometrics usually sets a desired test size (control of the type 1 error rate) and uses the most powerful test possible with little thought to test size-power trade-off. In order to measure test power I generate 2000 draws of a simulated dataset, with 1,000, 5,000 and 10,000 observations respectively, using the following data generating process:
 
 $$
 D_i = \pi_0 + \pi_{1i}Z_i + \sum_{k=1}^4 (\gamma_{ki}x_{ki} +  \delta_{ki}(Z_i \times x_{ki})) + \epsilon_i; \ \epsilon_i \sim N(0, 5^2)
 $$
-where the covariates are drawn from a multivariate normal mean 0 and variance $\Sigma = LL'$, the entries of $L$ are drawn from $U(-1, 1)$. The fourth covariate is transformed into a dummy variable depending on its sign and Z is a binary instrument drawn from a Bernoulli distribution with probability a half.
+  Covariates are drawn from a multivariate normal mean 0 and variance $\Sigma$.^[I use Cholesky decomposition to generate p.s.d $\Sigma = LL'$ by simulating entries of $L$ drawn from $U(-1, 1)$] The fourth covariate is transformed into a dummy variable depending on its sign and Z is a binary instrument drawn from a Bernoulli distribution with probability one half.
 
-For each draw of the data I run the saturated first stage model and causal random forest and record the number of "true" defiers in the dataset; the number of estimated defiers; and the defier test statistic/$p$-value.
+For each draw of the data I run the saturated first stage model and causal random forest and record: the number of "true" defiers in the dataset; the number of estimated defiers; and the defier test statistic/$p$-value.
 
 ```{r sim_data_generation_and_power_test}
 
@@ -410,6 +410,12 @@ simulations_power <- simulations_power %>%
 ```
 
 
+Throughout the essay I use an inverted y-axis when displaying $p$-values - the reason for this is two-fold. First, when considering thousands of $p$-values, as we are in this essay, it's common to use a negative log transform, popularised by biostatistics and genome studies. Displaying the "most significant" $p$-values at the very top of the visualisation makes better use of the space in a figure - we care less about the null hypothesis $p$-values we're least able to reject. Secondly, inverting the y-axis maintains consistency when we move to the negative log transform rather than switching between visualisation paradigms.
+
+It's clear from the figure below that at even moderate defier levels both tests are extremely powerful. When considering the saturated first stage test this is hardly surprising - it has long been acknowledged that testing whether a first stage "goes the right way" using sub-samples or interaction terms is a valid test of monotonicity and we'd expect test properties to be similar to standard frequentist testing of OLS.
+
+The random forest method, too, performs surprisingly well - even better than the saturated first stage test it would seem at first glance. Both tests improve substantially as sample size increases and as defier proportion increases as we'd expect.
+
 ```{r p_value_normal_scale_plot, fig.height=10, fig.width=10}
 library(scales)
 negative_log_trans <- function(base = exp(1)) {
@@ -442,11 +448,7 @@ simulations_power %>%
 ```
 
 
-Throughout the essay I use an inverted y-axis when displaying $p$-values - the reason for this is two-fold. First, when considering thousands of $p$-values, as we are in this essay, it's common to use a negative log transform, popularised by biostatistics and genome studies. Displaying the "most significant" $p$-values at the very top of the visualisation makes better use of the space in a figure - we care less about the null hypothesis $p$-values we're least able to reject. Secondly, inverting the y-axis maintains consistency when we move to the negative log transform rather than switching between visualisation paradigms.
-
-It's clear from the above figure that at even moderate defier levels both tests are extremely powerful. When considering the saturated first stage test this is hardly surprising - it has long been acknowledged that testing whether a first stage "goes the right way" using sub-samples or interaction terms is a valid test of monotonicity and we'd expect test properties to be similar to standard frequentist testing of OLS.
-
-The random forest method, too, performs surprisingly well - even better than the saturated first stage test it would seem at first glance. Both tests improve substantially as sample size increases and as defier proportion increases as we'd expect.
+The difference between the figure using a linear scale and $p$-values displayed on a log scale, below, clearly motivates the use of a log transform. $p$-values from the medium and larger dataset are orders of magnitude smaller than the $p$-values from the smallest dataset as we'd expect.
 
 
 
@@ -478,9 +480,9 @@ simulations_power %>%
 
 ```
 
-The difference between the figure above and its predecessor clearly motivates the use of a log transform. It's worth noting that each y-axis is on a different scale, on the larger dataset the tests produce $p$-values orders of magnitude smaller than the medium and small dataset.
 
-Even at low levels of defiers the tests perform well, only the smallest dataset struggles to identify defiers.  
+
+As defier proportion increases test power increases rapidly. For the larger and medium dataset the ability to detect defiers at even levels as small as 2\% is particularly impressive.
 
 ```{r p_val_low_defier_plot, fig.height=10, fig.width=10}
 simulations_power %>% 
@@ -507,7 +509,29 @@ simulations_power %>%
 ```
 
 
-In the figure below we can see that as mean partial effect moves away from 0, for both positive and negative first stages, it gets harder and harder to detect defiers.
+One concern may be that whilst the tests are capable of detecting defiers, this may be driven by defier activity in the tails. That is, the tests may work but only because of extremely "defiant" defiers since we only consider the most extreme defier in each sample. Fortunately, we can turn to each test's respective model predictions and compare estimated number of defiers against the actual number of defiers present in the data. The results are reassuring, as the number of defiers grow the number of predicted defiers grows too. 
+
+```{r defier_true_vs_estim, fig.height=10, fig.width=10}
+
+simulations_power %>% 
+  ggplot(aes(x = n_defiers_true,
+             y = n_defiers_estimated,
+             colour = model)) +
+  geom_point(alpha = 0.15) +
+  facet_grid(N~model) +
+  geom_abline(slope = 1, intercept = 0) +
+  theme_minimal() +
+  guides(colour = "none") +
+  labs(x = "N True Defiers",
+       y = "N Predicted Defiers",
+       title = "Defier Predictions vs Reality",
+       caption = "Note: Line of equality in black.")
+  
+```
+
+
+
+Write something here? Run regressions on sims?
 
 ```{r mean_dydx_plot}
 library(RColorBrewer)
@@ -537,14 +561,17 @@ ggMarginal(p,
            groupColour = TRUE,
            groupFill = TRUE) 
 
-
 ```
 
 
 
 
-Power increases as defier proportion increases
+The simulations show that using medium to large datasets the tests are extremely powerful - even at defier proportions of just 5\% both tests have a near 100\% chance of correctly rejecting the null. The smaller dataset is clearly noisier but again shows promising results - at defier proportions around 20\% the tests are able to pick up the presence of defiers in a sample almost perfectly.
 
+
+It's hard to make inferences comparing the power of the two tests without creating some measure of underlying uncertainty, such as bootstrapping the simulations again, however with 2000 draws of the data we can be reasonably confident at concluding that the saturated first stage test is more powerful in smaller datasets but is surpassed when moving to the moderate and larger dataset. This result, again, is hardly surprising, we'd hope that methods drawing on advances in machine learning have a comparative advantage as $N$ increases.
+
+Moving from power comparisons to mean $p$-value comparisons makes it easier to estimate the underlying uncertainty by calculating the standard error of the mean in each percentile bin - the reduction in uncertainty is stark when moving from the smaller to larger datasets.
 ```{r binned_power, fig.height=10, fig.width=10}
 sim_bin <- simulations_power %>% 
   mutate(gr=cut(pct_defiers_true, labels = FALSE, breaks= seq(0, 1, by = 0.01))/100) %>% 
@@ -581,7 +608,6 @@ sim_bin %>%
   theme(legend.position = "bottom") +
   labs(y = "Proportion Null Rejected",
        x = "Defier Proportion",
-       caption = "Note: Point size indicates number of draws in bin.",
        title = "Power As a Function of Defier Proportion") +
   facet_wrap(~N, ncol = 1) +
   scale_x_continuous(breaks = seq(from = 0, 1, 0.05),
@@ -592,7 +618,7 @@ sim_bin %>%
 
 
 
-Mean pval gets smaller.
+
 ```{r pval_mean_plot, fig.height=10, fig.width=10}
 sim_bin %>% 
   na.omit() %>% 
@@ -643,8 +669,9 @@ sim_bin %>%
 
 ```
 
-
 ### Size Simulations
+
+
 
 
 ```{r size_sims}
@@ -684,7 +711,7 @@ simulations_size <- simulations_size %>%
   mutate(model = tools::toTitleCase(model))
 ```
 
-
+To address any concerns of multiple testing we now examine test size using simulations under the null hypothesis - where no defiers are present. Rather than simulate this for all three datasets I simply use the smallest in order to save on computational cost.
 
 ```{r}
 
@@ -724,6 +751,8 @@ simulations_size %>%
   nrow()
 ```
 
+
+#### Romano-Wolf
 
 # Data and Replication
 
