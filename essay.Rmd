@@ -1,18 +1,24 @@
 ---
-title: "Detecting Defiers: An Empirical Investigation"
+title: 'Detecting Defiers: An Empirical Investigation'
 author: "Ed Jee"
 date: "22 January 2019"
-abstract: "I present some practical tests for detecting failure of the monotonicity assumption essential for causal identification under the LATE theorem. Simulations show impressive results for the saturated first stage and Random Forest methods. I apply these tests to a sample of papers in labour economics using instrumental variables estimation with an emphasis on visualisation and exploration rather than rigid adherence to Fisher hypothesis testing methods although these are supplied as well."
 output:
-    html_document:
-      code_folding: hide
-      highlight: tango
-      theme: journal
-      toc: yes
-      toc_float: yes
-bibliography: bibliography.bib
-editor_options: 
+  html_document:
+    code_folding: hide
+    highlight: tango
+    theme: journal
+    toc: yes
+    toc_float: yes
+editor_options:
   chunk_output_type: console
+bibliography: bibliography.bib
+abstract: I present some practical tests for detecting failure of the monotonicity
+  assumption essential for causal identification under the LATE theorem. Simulations
+  show impressive results for the saturated first stage and Random Forest methods.
+  I apply these tests to a sample of papers in labour economics using instrumental
+  variables estimation with an emphasis on visualisation and exploration rather than
+  rigid adherence to Fisher hypothesis testing methods although these are supplied
+  as well.
 ---
 
 ```{r setup, include=FALSE}
@@ -217,9 +223,17 @@ run_first_stage_interactions_fast <- function(dataset, dependent_variable, instr
 
 ## Honest Causal Forest
 
-Honest causal forest [@Athey7353; @Athey_Wager_Tibshirani; @Wager_and_Athey] attempts to estimate heterogeneous treatment effects through the use of random forest methods. In short, an honest regression tree is fit; honesty and eventual unbiasedness comes from splitting the data into two samples. One sample is used to fit the tree and another sample to decide tree splits or partitions. At the end of the tree the fit sample is dispersed into separate leaves and heterogeneous causal effects are estimated.
+Honest causal forest [@Athey7353; @Athey_Wager_Tibshirani; @Wager_and_Athey] attempts to estimate heterogeneous treatment effects through the use of random forest methods. In short, an honest regression tree is fit; honesty, and eventually unbiasedness, comes from splitting the data into two samples. One sample is used to fit the tree and another sample to decide tree splits or partitions. At the end of the tree the fit sample is dispersed into separate leaves and heterogeneous causal effects are estimated.
 
-Individual trees are likely to overfit, to overcome this bootstrapped aggregation (bagging) is used to fit many trees using bootstrapped samples - hence a random forest.
+Individual trees are prone to overfitting, to overcome this bootstrapped aggregation (bagging) is used to fit many trees using bootstrapped samples - hence a random forest. This method gives heterogeneous estimates from regressing the treatment on instrument status.
+
+The testing procedure is therefore similar to the saturated first stage method. We construct a test statistic for the most extreme defier, which will be asymptotically normal, and perform a one-sided hypothesis test.
+
+An advantage of honest causal forest is that it offers a method to estimate heterogeneous individual level causal effects rather than each individual's subgroup heterogeneous effect which only varies within the subgroup due to variation in an individual's covariates. However, there's a tradeoff - all else equal we'd expect the uncertainty of individual causal estimates to be far larger than those estimated at the subgroup level. Indeed, this greater uncertainty appears empirically when we take the test to the data. 
+
+Another disadvantage of honest causal forest is its relatively poor performance with few numbers of covariates. @Athey_Wager_Tibshirani recommend at least three covariates; the power simulations presented below use 4 covariates and every paper replicated in this essay have at least three covariates so this constraint isn't as strict as it may appear at first.
+
+Finally, another issue with honest causal forest - in this essay at least - is its large computational cost. Fitting 8,000 simulation draws of honest causal forest was extremely computationally intensive. Furthermore, fitting @Angrist_Evans's census data proved prohibitively expensive and a random, smaller, sample had to be fit instead.  This increased complexity and computational cost may be a stumbling block for applied practitioners seeking to implement honest causal forest in their own work.
 
 ## Simulations
 
@@ -733,7 +747,7 @@ Under a two-sided true null hypothesis we'd expect $p$-values to closely follow 
 
 A strong, positive first stage would result in a near horizontal empirical CDF - almost every $p$-value is close to 1 since the hypothesis of negative effects is firmly rejected. If there are defiers present we'd observe the empirical CDF "curve back" towards the null hypothesis or even cross the line of equality. 
 
-This exercise, whilst not offering a definitive answer to defier presence, is useful to an applied researcher. Later in the essay, when we take the tests to the data we can visualise the strength of the instrument's effect on inducing compliers to take up treatment, in a normalised manner invariant to scale effects, and also get a sense of how this strength varies heterogeneously within the sample or even whether there's initial evidence of defiance.
+This exercise, whilst not offering a definitive answer to defier presence, is useful to an applied researcher. Later in the essay, when we take the tests to the data, we can visualise the strength of the instrument's effect on inducing compliers to take up treatment, in a normalised manner invariant to scale effects, and also get a sense of how this strength varies heterogeneously within the sample or even whether there's initial evidence of defiance.
 
 ```{r ecdf_unif_size}
 simulations_size %>% 
@@ -774,10 +788,20 @@ Romano-Wolf stuff here.
 
 # Data and Replication
 
+I collect data from three well-known papers in the labour literature, each with a slightly different flavour of instrument: @Angrist_Evans use the now famous same-sex binary instrument and corresponding Wald estimator to estimate fertility's effect on household labour supply; @Angrist_Lavy use Maimonides' Rule as an instrumental variable in a fuzzy RDD identification strategy to uncover the causal effects of class size on test scores and finally I explore @Autor_Dorn_Hanson's "Bartik" or shift-share instrument for Chinese imports and regional labour market outcomes.
+
+
+Data is first cleaned, following provided code files as best as possible; summarised and checked against the original paper and finally main results are replicated. Every paper considered successfuly replicates and  often coefficient and standard error estimates are identical to their original counterparts.
+
 
 ## Angrist and Evans 1998
 
-Describe Angrist and Evans paper and what a defier means in this context.
+@Angrist_Evans explores the effect of fertility on household labour supply - they instrument fertility, the number of children a household has, with a same-sex variable that takes the value 1 if a household has two children of identical sex and 0 otherwise. The paper's findings suggest that having an additional child reduces a mother's labour supply somewhat substantially.
+
+In this paper, a complier is a couple that are more likely to have an additional child if their current children have the same-sex - there is a well documented gender mix preference amongst parents. However, for the LATE estimate to be valid there cannot be any couples that are induced not to have an additional child if their current children are the same-sex. 
+
+A plausible explanation is that there are economies of scale to raising two boys or two girls that are potentially lost when a third child of ex-ante unknown gender is raised. 
+
 
 #### 1990 Census Data
 ```{r data_import}
@@ -1410,13 +1434,13 @@ first_stage_interactions_80 <- AE_data_80 %>%
                                     dependent_variable = "morekids",
                                     instrument = "samesex") %>% 
   mutate(dataset = "1980") %>% 
-  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm,  dataset, dydx_lo, dydx_hi)
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm,  dataset, dydx_lo, dydx_hi, t_stat)
 first_stage_interactions_90 <- AE_data_90 %>% 
   run_first_stage_interactions_fast(dataset = .,
                                    dependent_variable = "morekids",
                                    instrument = "samesex") %>% 
   mutate(dataset = "1990") %>% 
-  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm, dataset, dydx_lo, dydx_hi)
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm, dataset, dydx_lo, dydx_hi, t_stat)
 
 first_stage_interactions_AE <- bind_rows(first_stage_interactions_90, first_stage_interactions_80) 
 
@@ -1425,7 +1449,6 @@ first_stage_interactions_AE <- bind_rows(first_stage_interactions_90, first_stag
 ```
 
 
-testing old stuff
 ```{r old_stuff, eval = FALSE, echo = FALSE}
 
 run_first_stage_interactions_fast_slow_SE <- function(dataset, dependent_variable, instrument){
@@ -1516,13 +1539,16 @@ test <- test_data %>%
 all_equal(first_stage_interactions, test)
 ```
 
+@Angrist_Evans run a first stage regression of the form:
+$$
+morekids_i = \alpha + \beta samesex_i + \gamma X_i + u_i
+$$
+where $X_i$ is a vector of controls including _age_; _age at first birth_; indicators for _Boy 1st_, _Boy 2nd_, _Black_, _Hispanic_, and _Other race_. In addition to this, I include controls for parental years of schooling and parental weight.
 
+
+The distribution of estimated partial effects is plotted below. Instrument partial effects seem to be particularly homogeneous; there's very little dispersion around mean partial effects of `r library(dplyr); first_stage_interactions_AE %>% group_by(dataset) %>% summarise(mean(dydx_instrument)) %>% pull() %>% round(. ,3)` respectively. Promisingly, results below zero appear to be sparse. 
 
 ```{r plotting_first_stage_interactions}
-
-first_stage_interactions_AE %>% 
-  filter(pval_one_neg < 0.1 | pval_holm < 0.1)
-
 colour_pair <- c("hotpink", "darkorange")
 
 first_stage_interactions_AE %>% 
@@ -1534,10 +1560,14 @@ first_stage_interactions_AE %>%
   scale_fill_manual(values = colour_pair) +
   labs(x = "Instrument Partial Effect",
        title = "Partial Effects - Same-Sex Instrument")
+```
 
 
 
 
+Ranking instrument partial effects and corresponding confidence intervals shows two things. First, the vast majority of effects are positive but there are some negative effects - the precision with which these effects are estimated will determine our ability to reject the null hypothesis of no defiers. Second, effects are estimated with large differences in precision. This makes sense, if there's one subgroup with less data or less precisely estimated effects this will show up in the uncertainty of partial effect estimates.   
+
+```{r AE_fs_ints_ranked}
 first_stage_interactions_AE %>% 
   group_by(dataset) %>% 
   sample_n(10000) %>% 
@@ -1558,7 +1588,7 @@ first_stage_interactions_AE %>%
 ```
 
 
-
+The histogram of $p$-values corresponding to the one-sided null hypothesis of no defiers is rather uninformative and only displayed here as further motivation for the negative log transform of $p$-value quantiles used for the remainder of the essay. Notably, most $p$-values are very close to 1 - as we'd expect when the vast majority of partial effects are positive and significant.
 ```{r plotting_interactions_two}
 
 first_stage_interactions_AE %>% 
@@ -1573,7 +1603,6 @@ first_stage_interactions_AE %>%
 
 first_stage_interactions_AE %>% 
   group_by(dataset) %>% 
-  sample_n(10000) %>% 
   ggplot(aes(sample = pval_one_neg, colour = dataset)) +
   stat_qq(distribution = qunif) +
   geom_abline(intercept = 0, slope = 1) +
@@ -1591,7 +1620,9 @@ first_stage_interactions_AE %>%
 
 ```
 
-## Maimonides Rule
+Moving to the quantile-quantile plot perfectly demonstrates the behaviour discussed earlier - there's sizeable horizontal CDF behaviour and curving back towards the line of equality. It seems reasonable to conclude that there's a large amount of compliers but some initial evidence, at least, of defiance.  
+
+## Maimonides' Rule
 
 
 ```{r maim_FS}
@@ -1605,7 +1636,7 @@ first_stage_interactions_maim_5 <- df_final5_cleaned %>%
                                     dependent_variable = "classize",
                                     instrument = "func1") %>% 
   mutate(dataset = "Fifth Grade") %>% 
-  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm,  dataset, dydx_lo, dydx_hi)
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm,  dataset, dydx_lo, dydx_hi, t_stat)
 
 first_stage_interactions_maim_4 <- df_final4_cleaned %>% 
   select(classize,
@@ -1617,18 +1648,14 @@ first_stage_interactions_maim_4 <- df_final4_cleaned %>%
                                    dependent_variable = "classize",
                                    instrument = "func1") %>% 
   mutate(dataset = "Fourth Grade") %>% 
-  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm, dataset, dydx_lo, dydx_hi)
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm, dataset, dydx_lo, dydx_hi, t_stat)
 
 first_stage_interactions_maimonides <- bind_rows(first_stage_interactions_maim_5, first_stage_interactions_maim_4) 
 ```
 
-
+The distribution of instrument partial effects using Maimonides' rule appear to be definitive; there's no evidence of defiers in either fourth or fifth grade classes. Ranking the instrument partial effects leads to very similar conclusions - in fact, there are no estimated defiers in either dataset.
 
 ```{r maim_plot}
-
-first_stage_interactions_maimonides %>% 
-  filter(pval_one_neg < 0.1 | pval_holm < 0.1)
-
 first_stage_interactions_maimonides %>% 
   ggplot(aes(x = dydx_instrument, fill = dataset)) +
   geom_histogram(colour = "black") +
@@ -1639,16 +1666,23 @@ first_stage_interactions_maimonides %>%
   labs(x = "Instrument Partial Effects",
        title = "Partial Effects - Maimonides' Instrument")
 
-first_stage_interactions_maimonides %>% 
-  ggplot(aes(x = pval_one_neg, fill = dataset)) +
-  geom_histogram(colour="black") +
-  facet_wrap(~dataset, scales = "free") +
-  guides(fill = "none") +
-  theme_minimal() +
-  labs(title = "P-Values - Maimonides' Instrument",
-       x = "P-Value") +
-  scale_fill_manual(values = colour_pair)
+# first_stage_interactions_maimonides %>% 
+#   ggplot(aes(x = pval_one_neg, fill = dataset)) +
+#   geom_histogram(colour="black") +
+#   facet_wrap(~dataset, scales = "free") +
+#   guides(fill = "none") +
+#   theme_minimal() +
+#   labs(title = "P-Values - Maimonides' Instrument",
+#        x = "P-Value") +
+#   scale_fill_manual(values = colour_pair)
 
+```
+
+
+
+The quantile-quantile plot is near horizontal throughout and any indication of curving back towards equality pales in comparison to the same-sex instrument in @Angrist_Evans's dataset - curving back here is more a function of axes scale and plotted on the same scale as @Angrist_Evans the $p$-value CDF would appear horizontal.
+
+```{r maim_qq_fs}
 first_stage_interactions_maimonides %>% 
   group_by(dataset) %>% 
   arrange(dydx_instrument) %>% 
@@ -1700,20 +1734,16 @@ first_stage_interactions_ADH_manu <- df_china %>%
                                     dependent_variable = "d_tradeusch_pw",
                                     instrument = "d_tradeotch_pw_lag",
                                     weights = df_china$timepwt48) %>% 
-  mutate(dataset = "only")
+  mutate(dataset = "ADH") %>% 
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm,  dataset, dydx_lo, dydx_hi, t_stat)
 
 
 ```
 
 
+@Autor_Dorn_Hanson's dataset is by far the smallest considered in the essay so simulation results suggest test power will be relatively low and the saturated first stage test should have a comparative advantage over the causal forest test used next. However, even with this caveat the distribution of instrument partial effects seems to display clear presence of defiance.
 
 ```{r ADH_plot}
-first_stage_interactions_ADH_manu %>% nrow()
-
-first_stage_interactions_ADH_manu %>% 
-  filter(pval_holm < 0.05)
-
-
 first_stage_interactions_ADH_manu %>% 
   ggplot(aes(x = dydx_instrument, fill = dataset)) +
   geom_histogram(colour = "black") +
@@ -1723,14 +1753,20 @@ first_stage_interactions_ADH_manu %>%
   labs(x = "Instrument Partial Effects",
        title = "Partial Effects - Bartik Instrument")
 
-first_stage_interactions_ADH_manu %>% 
-  ggplot(aes(x = pval_one_neg, fill = dataset)) +
-  geom_histogram(colour = "black") +
-  scale_fill_manual(values = colour_pair) +
-  labs(x = "P-Value",
-       title = "P-Values - Bartik Instrument") +
-  theme_minimal()
+# first_stage_interactions_ADH_manu %>% 
+#   ggplot(aes(x = pval_one_neg, fill = dataset)) +
+#   geom_histogram(colour = "black") +
+#   scale_fill_manual(values = colour_pair) +
+#   labs(x = "P-Value",
+#        title = "P-Values - Bartik Instrument") +
+#   theme_minimal()
 
+
+```
+
+
+This seems to be the most "defiant dataset" yet with a large amount of defiers present in the negative tail. Estimates seem to be relatively precisely estimated with little variation between partial effect precision.
+```{r ADH_fs_rank}
 first_stage_interactions_ADH_manu %>% 
   arrange(dydx_instrument) %>% 
   mutate(rank = row_number()) %>% 
@@ -1743,7 +1779,11 @@ first_stage_interactions_ADH_manu %>%
   labs(title = "Partial Effects Ranked - Bartik Instrument",
        y = "Partial Effect") +
   guides(colour = "none")
+```
 
+
+The quantile-quantile plot shows reversion to the line of equality and the smallest $p$-value will clearly be significant at standard levels of significance. 
+```{r ADH_fs_qq}
 first_stage_interactions_ADH_manu %>% 
   ggplot(aes(sample = pval_one_neg, colour = dataset)) +
   stat_qq(distribution = qunif) +
@@ -1753,8 +1793,136 @@ first_stage_interactions_ADH_manu %>%
   scale_y_continuous(trans=negative_log_trans(10)) +
   labs(title = "QQ plot of P-values - Bartik Instrument",
        caption = "Note: Both axes use negative log(10) scale.") +
-  guides(colour = "none")
+  guides(colour = "none") +
+  scale_colour_manual(values = colour_pair) 
+
 ```
+
+## Results
+
+
+
+```{r res_fs, results = "asis"}
+library(gt)
+first_stage_results <- suppressWarnings(bind_rows(
+  first_stage_interactions_AE %>% 
+    mutate(paper = "Same-Sex"),
+  first_stage_interactions_maimonides %>% 
+    mutate(paper = "Maimonides' Rule"),
+  first_stage_interactions_ADH_manu %>% 
+    mutate(paper = "Shift-Share")
+))
+
+## TEST
+# 
+# a <- first_stage_results %>% 
+#   group_by(paper,
+#            dataset) %>% 
+#   filter(pval_one_neg == min(pval_one_neg))
+# 
+# b <- first_stage_results %>% 
+#   group_by(paper,
+#            dataset) %>% 
+#   filter(t_stat == min(t_stat))
+# 
+# all_equal(a, b)
+
+
+
+
+first_stage_summary <- first_stage_results %>% 
+  group_by(paper,
+           dataset) %>% 
+  summarise(estimated_defiers = sum(ifelse(dydx_instrument < 0, 1, 0)),
+            n = n(),
+            pct_defiers = estimated_defiers / n,
+         defier_pval = min(pval_one_neg),
+         defier_tstat = min(t_stat)) %>% 
+  ungroup() %>% 
+  mutate(dataset = factor(dataset,
+                          levels = c("1980",
+                                     "1990",
+                                     "Fourth Grade",
+                                     "Fifth Grade",
+                                     "ADH")))
+adjusted_p_vals <- first_stage_summary %>% 
+  filter(paper == "Same-Sex") %>%
+  mutate(p_adj = p.adjust(defier_pval, "holm")) %>%
+  select(p_adj) %>% 
+  pull() %>% 
+  round(., 3)
+```
+
+In conclusion, the saturated first stage test using the three papers shows mixed results.
+There's no evidence of defiance in @Angrist_Lavy's estimates of class size and grades and with 2000 observations we can be reasonably confident of test power - indeed, in this range we'd expect the saturated first test to excel in comparison to its machine learning cousin.
+
+
+```{r}
+
+colnames(first_stage_summary) <- c("Paper",
+                                   "Dataset",
+                                   "Defiers",
+                                   "N",
+                                   "% Defier",
+                                   "P-Value",
+                                   "T-Stat")
+
+temp_df <- as_tibble(cbind(nms = names(first_stage_summary), t(first_stage_summary)))
+
+
+colnames(temp_df) <- temp_df[2, ]
+
+temp_df <- temp_df %>% 
+  filter(Dataset != "Paper" & Dataset != "Dataset") %>% 
+  mutate_at(vars(-Dataset),
+            as.numeric)
+
+temp_df %>% 
+  gt(rowname_col = "Dataset")  %>%
+  tab_spanner(
+    label = "Same-Sex",
+    columns = vars(`1980`, `1990`)
+  ) %>%
+  tab_spanner(
+    label = "Maimonides' Rule",
+    columns = vars("Fourth Grade", "Fifth Grade")
+  ) %>%
+  tab_spanner(
+    label = "Shift-Share",
+    columns = vars("ADH")
+  ) %>% 
+  fmt_number(
+    columns = vars(`1990`,
+                   `1980`,
+                   `Fourth Grade`,
+                   `Fifth Grade`,
+                   `ADH`),
+    decimals = 3,
+    drop_trailing_zeros = TRUE
+    ) %>% 
+  fmt_percent(
+    columns = vars(`1980`,
+                   `1990`,
+                   `Fourth Grade`,
+                   `Fifth Grade`,
+                   `ADH`),
+    rows = 3
+  ) %>% 
+  tab_header(
+    title = "Saturated First Stage Results"
+  )
+
+rm(temp_df)
+```
+
+The same-sex instrument estimates are variable.  On the one hand we can reject the null of no defiance at the 5\% significance level for the 1980 census data sample but not at 1\%; whilst we can't reject the null for the 1990 sample at even 10\% significance. A simple multiple comparison adjustment such as Holm-Bonferroni will lead to $p$-values of `r adjusted_p_vals`, respectively and we fail to reject the null hypothesis of no defiance.
+
+@Angrist_Evans's dataset is very large, whilst we might be confident in the power of the test it would probably be unwise to suggest that defiance of 0.05\% is enough to invalidate their identification strategy - especially when these defiers are so imprecisely estimated.
+
+Meanwhile, @Autor_Dorn_Hanson's identification strategy may be suspect - almost 7\% of the dataset are estimated to be defiers and we reject the null of no defiance at 0.1\% significance. 
+
+
+
 
 
 # Honest Causal Forest
@@ -2052,313 +2220,134 @@ tau_hat_results_ADH %>%
   scale_colour_manual(values = colour_pair)
 ```
 
+## Results
 
-# Bayesian Test
-write up on bayesian test
 
-## Angrist and Evans
-## Maimonides Rule
-## Autor Dorn Hanson
+
+```{r forest_summm, results = "asis"}
+tau_hat_results_all <- suppressWarnings(bind_rows(
+  tau_hat_results %>% 
+    mutate(paper = "Same-Sex"),
+  tau_hat_results_maimonides %>% 
+    mutate(paper = "Maimonides' Rule"),
+  tau_hat_results_ADH %>% 
+    mutate(paper = "Shift-Share")
+))
+
+## TEST
+# 
+# a <- first_stage_results %>% 
+#   group_by(paper,
+#            dataset) %>% 
+#   filter(pval_one_neg == min(pval_one_neg))
+# 
+# b <- first_stage_results %>% 
+#   group_by(paper,
+#            dataset) %>% 
+#   filter(t_stat == min(t_stat))
+# 
+# all_equal(a, b)
+
+
+
+
+tau_hat_summary <- tau_hat_results_all %>% 
+  group_by(paper,
+           dataset) %>% 
+  summarise(estimated_defiers = sum(ifelse(predictions < 0, 1, 0)),
+            n = n(),
+            pct_defiers = 100*estimated_defiers/n,
+         defier_pval = min(pval),
+         defier_tstat = min(t_stat))
+
+tau_hat_summary <- tau_hat_results_all %>% 
+  group_by(paper,
+           dataset) %>% 
+  summarise(estimated_defiers = sum(ifelse(predictions < 0, 1, 0)),
+            n = n(),
+            pct_defiers = estimated_defiers / n,
+         defier_pval = min(pval),
+         defier_tstat = min(t_stat)) %>% 
+  ungroup() %>% 
+  mutate(dataset = factor(dataset,
+                          levels = c("1980",
+                                     "1990",
+                                     "Fourth Grade",
+                                     "Fifth Grade",
+                                     "ADH")))
+colnames(tau_hat_summary) <- c("Paper",
+                                   "Dataset",
+                                   "Defiers",
+                                   "N",
+                                   "% Defier",
+                                   "P-Value",
+                                   "T-Stat")
+
+
+temp_df <- as_tibble(cbind(nms = names(tau_hat_summary), t(tau_hat_summary)))
+
+
+colnames(temp_df) <- temp_df[2, ]
+
+temp_df <- temp_df %>% 
+  filter(Dataset != "Paper" & Dataset != "Dataset") %>% 
+  mutate_at(vars(-Dataset),
+            as.numeric)
+
+temp_df %>% 
+  gt(rowname_col = "Dataset")  %>%
+  tab_spanner(
+    label = "Same-Sex",
+    columns = vars(`1980`, `1990`)
+  ) %>%
+  tab_spanner(
+    label = "Maimonides' Rule",
+    columns = vars("Fourth Grade", "Fifth Grade")
+  ) %>%
+  tab_spanner(
+    label = "Shift-Share",
+    columns = vars("ADH")
+  ) %>% 
+  fmt_number(
+    columns = vars(`1990`,
+                   `1980`,
+                   `Fourth Grade`,
+                   `Fifth Grade`,
+                   `ADH`),
+    decimals = 3,
+    drop_trailing_zeros = TRUE
+    ) %>% 
+  fmt_percent(
+    columns = vars(`1980`,
+                   `1990`,
+                   `Fourth Grade`,
+                   `Fifth Grade`,
+                   `ADH`),
+    rows = 3
+  ) %>% 
+  tab_header(
+    title = "Honest Causal Forest Results"
+  )
+
+rm(temp_df)
+
+
+
+```
 
 # Conclusion
 
+```{r all_results, results="asis"}
+
+# all_results <- inner_join(first_stage_summary,
+#                           tau_hat_summary,
+#                           by = c("paper", "dataset"),
+#                           suffix = c("_first_stage", "_forest"))
+#
+
+```
+
 # Appendix
-
-```{r p_value_normal_scale_plot_appendix}
-simulations_power <- readr::read_csv("C:/Users/edjee/Dropbox/Ed/power_simulations_both_medium.csv") %>% 
-  mutate(model = tools::toTitleCase(model))
-
-library(scales)
-negative_log_trans <- function(base = exp(1)) {
-  trans <- function(x) -log(x, base)
-  inv <- function(x) base^(-x)
-  trans_new(paste0("negative_log-", format(base)), trans, inv, 
-            log_breaks(base = base), 
-            domain = c(1e-100, Inf))
-}
-
-## Remove this one
-simulations_power %>% 
-  filter(pct_defiers_true > 0) %>% 
-  ggplot(aes(x = pct_defiers_true,
-             y = pval_defier,
-             colour = model)) +
-  geom_point(alpha = 0.15) +
-  geom_hline(yintercept = 0.05,
-             linetype = "longdash",
-             alpha = 0.5) +
-  guides(colour = "none") +
-  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
-  facet_wrap(~model) +
-  labs(x = "Defier Percentage",
-       y = "P-Value",
-       caption = "Note: Dashed line indicates a p-value of 0.05.",
-       title = "P-Values from Power Simulations") +
-  theme_minimal()
-
-
-simulations_power %>% 
-  filter(pct_defiers_true > 0) %>% 
-  ggplot(aes(x = pct_defiers_true,
-             y = pval_defier,
-             colour = model)) +
-  geom_point(alpha = 0.15) +
-  geom_hline(yintercept = 0.05,
-             linetype = "longdash",
-             alpha = 0.5) +
-  guides(colour = "none") +
-  scale_y_reverse() +
-  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
-  facet_wrap(~model) +
-  labs(x = "Defier Percentage",
-       y = "P-Value",
-       caption = "Note: Y-axis scale inverted. \n Dashed line indicates a p-value of 0.05.",
-       title = "P-Values from Power Simulations") +
-  theme_minimal()
-```
-
-
-```{r p_val_power_neg_log_10_appendix}
-
-simulations_power %>% 
-  filter(pct_defiers_true > 0) %>% 
-  ggplot(aes(x = pct_defiers_true,
-             y = pval_defier,
-             colour = model)) +
-  geom_point(alpha = 0.15) +
-  geom_hline(yintercept = 0.05,
-             linetype = "longdash",
-             alpha = 0.5) +
-  scale_y_continuous(trans = negative_log_trans(10)) +
-  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
-  guides(colour = "none") +
-  theme_minimal() +
-  facet_wrap(~model) +
-  labs(x = "Defier Percentage",
-       y = "P-Value",
-       caption = "Note: Y-Axis on negative log(10) scale. \n Dashed line indicates a p-value of 0.05",
-       title = "P-Values from Power Simulations")
-
-```
-
-```{r p_val_low_defier_plot_appendix}
-simulations_power %>% 
-  filter(pct_defiers_true > 0) %>% 
-  ggplot(aes(x = pct_defiers_true,
-             y = pval_defier,
-             colour = model)) +
-  geom_point(alpha = 0.15,
-             aes(colour = model)) +
-  geom_hline(yintercept = 0.05, linetype = "longdash") +
-  scale_y_reverse() +
-  geom_smooth(se = TRUE,
-              colour = "violetred",
-              alpha = 0.5) +
-  scale_x_continuous(limits = c(0, 0.2), labels = scales::percent_format(accuracy = 1)) +
-  theme_minimal() +
-  facet_wrap(~model) +
-  guides(colour = "none") +
-  labs(x = "Defier Percentage",
-       y = "P-Value",
-       title = "Power Simulation Results at Low Defier Proportion",
-       caption = "Note: Y-axis scale inverted. \n Dashed line indicates a p-value of 0.05.")
-
-simulations_power %>% 
-  filter(pct_defiers_true > 0) %>% 
-  ggplot(aes(x = pct_defiers_true,
-             y = pval_defier,
-             colour = model)) +
-  geom_point(alpha = 0.15,
-             aes(colour = model)) +
-  geom_hline(yintercept = 0.05, linetype = "longdash") +
-  geom_smooth(se = TRUE,
-              colour = "violetred",
-              alpha = 0.5) +
-  scale_y_continuous(trans = negative_log_trans(10)) +
-  scale_x_continuous(limits = c(0, 0.2), labels = scales::percent_format(accuracy = 1)) +
-  theme_minimal() +
-  facet_wrap(~model) +
-  guides(colour = "none") +
-  labs(x = "Defier Percentage",
-       y = "P-Value",
-       title = "Power Simulation Results at Low Defier Proportion",
-       caption = "Note: Y-Axis on negative log(10) scale. \n Dashed line indicates a p-value of 0.05")
-
-```
-
-
-```{r demonstration_plot_appendix}
-# REMOVE this one
-p <- simulations_power %>% 
-  filter(pct_defiers_true > 0) %>% 
-  ggplot(aes(x = mean_dydx,
-             y = pval_defier)) +
-  geom_point(alpha = 0.05) +
-  geom_smooth(method = lm, se = FALSE) +
-  scale_y_continuous(trans = negative_log_trans(10)) +
-  theme_minimal() +
-  guides(colour = "none") +
-  labs(x = "Mean Instrument Partial Effect",
-       y = "P-Value",
-       title = "Defier P-Value against Mean Instrument Partial Effect",
-       caption = "Note: Y-Axis on negative log(10) scale.")
-ggMarginal(p,  type = "histogram")
-```
-
-
-```{r mean_dydx_plot_appendix}
-
-
-p <- simulations_power %>% 
-  filter(pct_defiers_true > 0) %>% 
-  ggplot(aes(x = mean_dydx,
-             y = pval_defier,
-             colour = factor(sign(estimate)),
-             group = sign(estimate))) +
-  geom_point(alpha = 0.05) +
-  geom_smooth(method = lm, se = FALSE) +
-  scale_y_continuous(trans = negative_log_trans(10)) +
-  theme_minimal() +
-  guides(colour = "none") +
-  labs(x = "Mean Instrument Partial Effect",
-       y = "P-Value",
-       title = "Defier P-Value against Mean Instrument Partial Effect",
-       caption = "Note: Y-Axis on negative log(10) scale.")
-ggMarginal(p,
-           type = "histogram",
-           groupColour = TRUE,
-           groupFill = TRUE)
-
-
-```
-
-
-```{r binned_power_appendix}
-sim_bin <- simulations_power %>% 
-  group_by(model,
-           gr=cut(pct_defiers_true, breaks= seq(0, 1, by = 0.05))) %>% 
-  mutate(n= n()) %>%
-  arrange(as.numeric(gr)) %>% 
-  mutate(n_rejected = ifelse(pval_defier < 0.05, 1, 0)) %>% 
-  mutate(pct_rejected = sum(n_rejected)/n) 
-
-sim_bin_summ <- simulations_power %>% 
-  group_by(model,
-           gr=cut(pct_defiers_true, breaks= seq(0, 1, by = 0.05))) %>% 
-  mutate(n= n()) %>%
-  arrange(as.numeric(gr)) %>% 
-  mutate(n_rejected = ifelse(pval_defier < 0.05, 1, 0)) %>% 
-  summarise(pct_rejected = mean(n_rejected),
-            sd_rejected = sd(n_rejected),
-            n = unique(n),
-            mean_true_defier = mean(pct_defiers_true))
-
-
-sim_bin_summ %>% 
-  na.omit() %>% 
-  ggplot(aes(x = gr, y = pct_rejected, colour = model, group = model)) +
-  geom_point(aes(size = n)) + 
-  geom_line() +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-  guides(size = "none")  +
-  theme(legend.position = c(0.5, 0.2),
-        legend.background = element_rect(fill="lightgrey", 
-                                  size=0.5,  linetype = 0)) +
-  labs(y = "Proportion Null Rejected",
-       x = "Defier Proportion",
-       caption = "Note: Point size indicates number of draws in bin.",
-       title = "Power As a Function of Defier Proportion")
-
-sim_bin_summ %>%
-  na.omit() %>%
-  filter(mean_true_defier < 0.3) %>%
-  ggplot(aes(x = gr, y = pct_rejected, colour = model, group = model)) +
-  geom_point(aes(size = n)) +
-  geom_line() +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-  guides(size = "none") +
-    theme(legend.position = c(0.5, 0.2),
-        legend.background = element_rect(fill="lightgrey",
-                                  size=0.5,  linetype = 0)) +
-    labs(y = "Proportion Null Rejected",
-       x = "Defier Proportion",
-       caption = "Note: Point size indicates number of draws in bin.",
-       title = "Power As a Function of Defier Proportion")
-
-
-
-
-sim_bin %>% 
-  na.omit() %>% 
-  summarise(m_pval = mean(pval_defier),
-         sd_pval = sd(pval_defier)) %>% 
-  ggplot(aes(x = gr, y = m_pval, colour = model, group = model)) +
-  geom_point() + 
-  geom_line() + 
-  geom_linerange(aes(x = gr,
-                     ymin = m_pval - 1.96*sd_pval,
-                     ymax = m_pval + 1.96*sd_pval)) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-  guides(size = "none",
-         colour = "none") +
-  facet_wrap(~model) +
-    labs(y = "Mean P-Value",
-       x = "Defier Proportion",
-       caption = "Note: Dashed line indicates p-value of 0.05. \n 95% Confidence Intervals Displayed.",
-       title = "Mean P-Value as a Function of Defier Proportion") +
-  geom_hline(yintercept = 0.05,
-             linetype = "longdash",
-             alpha = 0.5) 
-
-sim_bin_summ %>% 
-  na.omit() %>% 
-  ggplot(aes(x = gr, y = pct_rejected, colour = model, group = model)) +
-  geom_point() + 
-  geom_line() + 
-  geom_linerange(aes(x = gr,
-                     ymin = pct_rejected - 1.96*sd_rejected,
-                     ymax = pct_rejected + 1.96*sd_rejected)) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-  guides(size = "none",
-         colour = "none") +
-  facet_wrap(~model) +
-    labs(y = "Proportion Null Rejected",
-       x = "Defier Proportion",
-       caption = "Note: Point size indicates number of draws in bin. \n 95% Confidence Intervals Displayed.",
-       title = "Power As a Function of Defier Proportion")
-
-```
-
-
-
-```{r}
-
-library(ggridges)
-
-
-sim_bin %>% 
-  na.omit() %>% 
-  ggplot(aes(x = pval_defier, y = gr, fill = gr)) +
-  geom_density_ridges() +
-  theme_ridges() +
-  guides(fill = "none") +
-  scale_x_continuous(trans = negative_log_trans(10)) +
-  labs(y = "Defier Proportion",
-       x = "P-Value",
-       title = "P-Value distribution as Defier Proportion Changes",
-       caption = "Note: X-Axis on negative log(10) scale.")
-
-
-
-
-```
 
 
 # References
