@@ -13,12 +13,12 @@ editor_options:
   chunk_output_type: console
 bibliography: bibliography.bib
 abstract: I present some practical tests for detecting failure of the monotonicity
-  assumption essential for causal identification under the LATE theorem. Simulations
-  show impressive results for the saturated first stage and Random Forest methods.
-  I apply these tests to a sample of papers in labour economics using instrumental
+  assumption essential for causal identification under the LATE theorem. I apply these tests to a sample of papers in labour economics using instrumental
   variables estimation with an emphasis on visualisation and exploration rather than
   rigid adherence to Fisher hypothesis testing methods although these are supplied
-  as well.
+  as well. Simulations
+  show similar and impressive results for the saturated first stage and Random Forest methods however this similarity isn't borne out in applied settings leading to a puzzling divergence in test results.
+ 
 ---
 
 ```{r setup, include=FALSE}
@@ -37,7 +37,7 @@ knitr::opts_chunk$set(echo = TRUE,
 
 The LATE theorem is a cornerstone of identification in economics and labour economists in particular have popularised and preached its virtues. Considering the theorem's importance relatively little effort has been expended ensuring the theorem's assumptions are met in the dataset in question. This essay aims to promote a practical methodology that can be incorporated into current instrumental variables workflow in order to clearly aid researchers in verifying that necessary, but not sufficient, conditions are met empirically in the sample.
 
-Checking that the first stage "goes the right way" through the use of interaction terms or subsampling is common knowledge amongst applied practitioners but rarely discussed in depth. I formalise this notion and present some novel contributions of potential interest to social science researchers using saturated first stage regressions and negative log-log $p$-value transforms popularised by genome wide association studies (GWAS) to present visually striking evidence for or against monotonicity. Next, I show how advances in causal econometric inference using machine learning techniques, developed by @Wager_and_Athey, can be adapted to estimate the underlying first-stage heterogeneity and provide an alternative to the saturated regression model. I explore the power of the two tests in simulation studies in comparison to @RESTAT's monotonicity test and find XYZ. Finally, I take the tests to the data by applying the methodologies to various seminal papers in labour economics and fail to find significant evidence of defiers.
+Checking that the first stage "goes the right way" through the use of interaction terms or subsampling is common knowledge amongst applied practitioners but rarely discussed in depth. I formalise this notion and present some novel contributions of potential interest to social science researchers using saturated first stage regressions and negative log-log $p$-value transforms popularised by genome wide association studies (GWAS) to present visually striking evidence for or against monotonicity. Next, I show how advances in causal econometric inference using machine learning techniques, developed by @Wager_and_Athey, can be adapted to estimate the underlying first-stage heterogeneity and provide an alternative to the saturated regression model. I explore the power of the two tests in simulation studies in comparison to @RESTAT's monotonicity test and find XYZ. Finally, I take the tests to the data by applying the methodologies to various seminal papers in labour economics and find mixed evidence of defier presence.
 
 # The LATE Theorem
 
@@ -105,7 +105,7 @@ and therefore we wish to test hypotheses of the form:
 
 $$
 \begin{aligned}
-  H_{0i}: \frac{\partial D_i}{\partial Z_i} = \pi_{1i} + \sum_{k=1}^K \delta_{ki}x_{ki} &= 0 \\
+  H_{0i}: \frac{\partial D_i}{\partial Z_i} = \pi_{1i} + \sum_{k=1}^K \delta_{ki}x_{ki} &\geq 0 \\
   H_{1i}: \frac{\partial D_i}{\partial Z_i} = \pi_{1i} + \sum_{k=1}^K \delta_{ki}x_{ki} &< 0
 \end{aligned}
 $$
@@ -115,18 +115,18 @@ Therefore, our monotonicity test neatly corresponds with the set, or complete, n
 
 $$
 \begin{aligned}
-  H_0^C: \cap_{i \in N} \pi_{1i} + \sum_{k=1}^K \delta_{ki}x_{ki} &= 0 \\
+  H_0^C: \cap_{i \in N} \pi_{1i} + \sum_{k=1}^K \delta_{ki}x_{ki} &\geq 0 \\
   H_1^C: \cap_{i \in N} \pi_{1i} + \sum_{k=1}^K \delta_{ki}x_{ki} &< 0
 \end{aligned}
 $$
 
 
-Any test of this nature immediately faces two problems. First, we must consider whether control of the family wise error rate (FWER) in the face of $N$ simultaneous statistical inferences is necessary. Second, we must be confident of test power when performing $N$ inferences based off $N$ datapoints.
+Any test of this nature immediately faces two problems. First, we must consider whether control of the family-wise error rate (FWER) in the face of $N$ simultaneous statistical inferences is necessary. Second, we must be confident of test power when performing $N$ inferences based off $N$ datapoints.
 
 Fortunately, our tests are logically related - if we fail to reject the most statistically significant defier this implies we must fail to reject the next significant defier and so on. Likewise, if we do reject the null hypothesis and conclude there's evidence of a defier, considering the most adverse test statistic to the null, then our job is done - we only require evidence of _one_ defier to conclude monotonicity has failed. 
 
 
-Another way to consider the above is through consideration of the __closure principle__ of hypothesis testing. The closure of a set is the collection of hypotheses in the original set along with all distinct hypotheses formed by intersections of hypotheses in the set. When we consider just the null hypothesis of monotonicity using the most extreme defier possible, the null hypothesis of the second most extreme defier and so on is _already_ included in the closure of the set - therefore any closed multiple testing procedure considering $N$ hypotheses is effectively double counting our inferences and leading to too conservative an adjustment.
+Another way to consider the above is through consideration of the __closure principle__ of hypothesis testing. The closure of a set is the collection of hypotheses in the original set along with all distinct hypotheses formed by intersections of hypotheses in the set. When we consider just the null hypothesis of monotonicity using the most extreme defier possible, the null hypothesis of the second most extreme defier and so on is _already_ included in the closure of the set - therefore any closed multiple testing procedure considering $N$ hypotheses is effectively double counting our inferences and leading to an adjustment that is too conservative.
 
 
 Searching for the most adverse test-static, almost conditioning on significance, seems like a guaranteed way to introduce "fishing" or "$p$-hacking" - to ease such concerns I present a rigorous array of power and size simulations and show that a Romano-Wolf adjustment, which lets the data speak to hypothesis dependency through resampling, is far too conservative for the problem at hand.
@@ -144,6 +144,10 @@ library(ggplot2)
 library(ggExtra)
 library(grf)
 library(tibble)
+library(AER)
+library(stargazer)
+library(purrr)
+library(sandwich)
 
 find_SEs <- function(model_data_no_y, model_vcov, instrument){
   model_data_no_y <- model_data_no_y %>% 
@@ -185,7 +189,12 @@ find_SEs <- function(model_data_no_y, model_vcov, instrument){
   return(SE_dydx)
   
 } 
-run_first_stage_interactions_fast <- function(dataset, dependent_variable, instrument, weights = NULL){
+run_first_stage_interactions_fast <- function(dataset,
+                                              dependent_variable,
+                                              instrument,
+                                              weights = NULL,
+                                              vcov_func = vcov,
+                                              ...){
   dataset <- dataset %>% 
     rename("instrument" = instrument)
   model_formula <- as.formula(paste0(dependent_variable,  "~ ", "instrument", "*."))
@@ -202,7 +211,7 @@ run_first_stage_interactions_fast <- function(dataset, dependent_variable, instr
                           dataset_unique) %>% 
     as_tibble()
   df_margins$instrument <- dataset$instrument
-  df_margins$SE_dydx_instrument <- find_SEs(dataset_unique, vcov(first_stage_fit), instrument)
+  df_margins$SE_dydx_instrument <- find_SEs(dataset_unique, vcov_func(first_stage_fit, ...), instrument)
   
   df_margins <- df_margins %>% 
     mutate(dydx_lo = dydx_instrument - qt(0.975, degrees_freedom) * SE_dydx_instrument,
@@ -240,7 +249,7 @@ Finally, another issue with honest causal forest - in this essay at least - is i
 
 ### Power Simulations
 
-Test power is the ability of a test to correctly reject a null hypothesis. Classical frequentist testing in econometrics usually sets a desired test size (control of the type 1 error rate) and uses the most powerful test possible with little thought to test size-power trade-off. In order to measure test power I generate 2000 draws of a simulated dataset, with 1,000, 5,000 and 10,000 observations respectively, using the following data generating process:
+Test power is the ability of a test to correctly reject a null hypothesis. Classical frequentist testing in econometrics usually sets a desired test size (control of the type I error rate) and uses the most powerful test possible with little thought to test size-power trade-off. In order to measure test power I generate 2000 draws of a simulated dataset, with 1,000, 5,000 and 10,000 observations respectively, using the following data generating process:
 
 $$
 D_i = \pi_0 + \pi_{1i}Z_i + \sum_{k=1}^4 (\gamma_{ki}x_{ki} +  \delta_{ki}(Z_i \times x_{ki})) + \epsilon_i; \ \epsilon_i \sim N(0, 5^2)
@@ -544,35 +553,35 @@ simulations_power %>%
 
 
 
-Write something here? Run regressions on sims?
+<!-- Write something here? Run regressions on sims? -->
 
 ```{r mean_dydx_plot}
 library(RColorBrewer)
-p <- simulations_power %>% 
-  filter(N == "Large") %>% 
-  filter(pct_defiers_true > 0) %>% 
-  ggplot(aes(x = mean_dydx,
-             y = pval_defier,
-             colour = factor(sign(estimate)),
-             group = sign(estimate))) +
-  geom_point(alpha = 0.05) +
-  geom_smooth(method = lm, se = FALSE) +
-  scale_y_continuous(trans = negative_log_trans(10)) +
-  theme_minimal() +
-  labs(x = "Mean Instrument Partial Effect",
-       y = "P-Value",
-       title = "Defier P-Value against Mean Instrument Partial Effect",
-       caption = "Note: Y-Axis on negative log(10) scale. Large dataset only.") +
-  scale_colour_manual(values = c("#999999", "#E69F00"),
-                      name = "Sign of First Stage:",
-                      breaks = c("-1", "1"),
-                      labels = c("-ve", "+ve")) +
-  theme(legend.position = "bottom")
-
-ggMarginal(p,
-           type = "histogram",
-           groupColour = TRUE,
-           groupFill = TRUE) 
+# p <- simulations_power %>% 
+#   filter(N == "Large") %>% 
+#   filter(pct_defiers_true > 0) %>% 
+#   ggplot(aes(x = mean_dydx,
+#              y = pval_defier,
+#              colour = factor(sign(estimate)),
+#              group = sign(estimate))) +
+#   geom_point(alpha = 0.05) +
+#   geom_smooth(method = lm, se = FALSE) +
+#   scale_y_continuous(trans = negative_log_trans(10)) +
+#   theme_minimal() +
+#   labs(x = "Mean Instrument Partial Effect",
+#        y = "P-Value",
+#        title = "Defier P-Value against Mean Instrument Partial Effect",
+#        caption = "Note: Y-Axis on negative log(10) scale. Large dataset only.") +
+#   scale_colour_manual(values = c("#999999", "#E69F00"),
+#                       name = "Sign of First Stage:",
+#                       breaks = c("-1", "1"),
+#                       labels = c("-ve", "+ve")) +
+#   theme(legend.position = "bottom")
+# 
+# ggMarginal(p,
+#            type = "histogram",
+#            groupColour = TRUE,
+#            groupFill = TRUE) 
 
 ```
 
@@ -718,7 +727,7 @@ if (run_sim) {
   write.csv(simulations_size, file = "size_simulations_both.csv", row.names = FALSE)
   # write.csv(simulations_size, file = "size_simulations_both.csv", row.names = FALSE)  
 } else {
-  simulations_size <- readr::read_csv("size_simulations_both.csv")
+  simulations_size <- readr::read_csv("C:/Users/edjee/Dropbox/Ed/size_simulations_both_large.csv")
 }
 simulations_size <- simulations_size %>% 
   mutate(model = tools::toTitleCase(model))
@@ -733,8 +742,8 @@ simulations_size %>%
   ggplot(aes(x = pval_defier,
              fill = model)) +
   geom_histogram(colour = "black") +
-  facet_wrap(~model) +
   theme_minimal() +
+  facet_wrap(~model) +
   guides(fill = "none") +
   labs(x = "P-Value",
        title = "P-Value Distribution Under One-Sided Null")
@@ -758,8 +767,8 @@ simulations_size %>%
   geom_abline(intercept = 0, slope = 1) +
   scale_y_continuous(trans = negative_log_trans(10)) +
   scale_x_continuous(trans = negative_log_trans(10)) +
-  facet_wrap(~model) +
   theme_minimal() +
+  facet_wrap(~model) +
   guides(colour = "none") +
   labs(title = "QQ plot of Simulated P-values",
        caption = "Note: Both axes use a negative log(10) scale.")
@@ -768,15 +777,15 @@ simulations_size %>%
 
 
 size checks table here.
-```{r checks_size}
+```{r checks_size, results = "asis"}
+library(gt)
 simulations_size %>% 
   filter(pval_defier < 0.05) %>% 
   summarise(n = nrow(.),
-            proportion = n / nrow(simulations_size))
+            proportion = n / nrow(simulations_size),
+            N_defiers = sum(ifelse(pct_defiers_true > 0, 1, 0))) %>% 
+  gt()
 
-simulations_size %>% 
-  filter(pct_defiers_true > 0) %>% 
-  nrow()
 ```
 
 
@@ -794,26 +803,20 @@ I collect data from three well-known papers in the labour literature, each with 
 Data is first cleaned, following provided code files as best as possible; summarised and checked against the original paper and finally main results are replicated. Every paper considered successfuly replicates and  often coefficient and standard error estimates are identical to their original counterparts.
 
 
+```{r data_import}
+
+
 ## Angrist and Evans 1998
 
-@Angrist_Evans explores the effect of fertility on household labour supply - they instrument fertility, the number of children a household has, with a same-sex variable that takes the value 1 if a household has two children of identical sex and 0 otherwise. The paper's findings suggest that having an additional child reduces a mother's labour supply somewhat substantially.
-
-In this paper, a complier is a couple that are more likely to have an additional child if their current children have the same-sex - there is a well documented gender mix preference amongst parents. However, for the LATE estimate to be valid there cannot be any couples that are induced not to have an additional child if their current children are the same-sex. 
-
-A plausible explanation is that there are economies of scale to raising two boys or two girls that are potentially lost when a third child of ex-ante unknown gender is raised. 
-
-
 #### 1990 Census Data
-```{r data_import}
+
 library(haven)
 library(dplyr)
 library(broom)
 df_90 <- read_sas("Angrist and Evans 90.sas7bdat")
-```
 
 
-Cleaning data according to Angrist and Evans SAS replication codes:
-```{r data_cleaning}
+# Cleaning data according to Angrist and Evans SAS replication codes:
 
 clean_angrist_evans_data <- function(dataset){
   df_clean <- dataset %>% 
@@ -838,12 +841,10 @@ clean_angrist_evans_data <- function(dataset){
 df_90_clean <- df_90 %>%
   clean_angrist_evans_data()
 rm(df_90)
-```
 
 #### 1980 Census Data
 
 
-```{r cleaning_1980}
 
 df_80 <- read_sas("Angrist and Evans 80.sas7bdat")
 
@@ -954,14 +955,9 @@ rm(df_80,
    df_80_filtered_two,
    df_80_subset)
 
-```
 
 
-
-## Replicating Results
-
-```{r data_transforming}
-
+## data transformations
 transform_clean_angrist_evans <- function(dataset) {
   transformed_df <- dataset %>%
     rename(
@@ -1023,167 +1019,16 @@ df_90_final <- df_90_subset %>%
   )
 
 rm(df_90_clean, df_90_subset)
-```
 
-
-#### Table Two Summary Statistics
-
-Trying to recreate table 2
-```{r table_2}
-library(tidyr)
-AE_90_summary <- df_90_final %>% 
-  summarise(children_ever_born = mean(fertil - 1),
-            more_than_2 = mean(morekids),
-            mean_boy_first = mean(boy1st),
-            boy_2nd = mean(boy2nd),
-            two_boys = mean(boys2),
-            two_girls = mean(girls2),
-            samesex = mean(samesex),
-            age = mean(m_age),
-            worked = mean(worked_m),
-            weeks = mean(week89m),
-            hrs_wk = mean(hour89m),
-            labour_income_mum = mean(income_m),
-            labour_income_dad = mean(income_d, na.rm = TRUE),
-            fam_income = mean(fam_inc),
-            mean_non_wife = mean(nonmoi)) %>% 
-  gather(term, mean_90) 
-
-AE_80_summary <- df_80_final %>% 
-    summarise(children_ever_born = mean(fertil - 1),
-            more_than_2 = mean(morekids),
-            mean_boy_first = mean(boy1st),
-            boy_2nd = mean(boy2nd),
-            two_boys = mean(boys2),
-            two_girls = mean(girls2),
-            samesex = mean(samesex),
-            age = mean(m_age),
-            worked = mean(worked_m),
-            weeks = mean(weeksm),
-            hrs_wk = mean(hoursm),
-            labour_income_mum = mean(income_m),
-            labour_income_dad = mean(income_d, na.rm = TRUE),
-            fam_income = mean(fam_inc),
-            mean_non_wife = mean(nonmoi)) %>% 
-  gather(term, mean_80) 
-
-AE_summary <- inner_join(AE_80_summary, AE_90_summary, by = "term") %>% 
-  knitr::kable(digits = 3)
-AE_summary
-
-```
-
-#### Regression Results
-
-Recreating Table 5
-```{r table_5, results = "asis"}
-library(AER)
-library(stargazer)
-library(purrr)
-table_5_models_90 <- c("worked_m",
-  "week89m",
-  "hour89m",
-  "income_m",
-  "log(fam_inc)") %>%
-  map(~(
-  paste0(., " ~ morekids | samesex") %>% 
-  as.formula() %>% 
-  ivreg(., data = df_90_final)))
-
-table_5_models_80 <- c("worked_m",
-  "weeksm",
-  "hoursm",
-  "income_m",
-  "log(fam_inc)") %>% 
-  map(~(
-  paste0(., " ~ morekids | samesex") %>% 
-  as.formula() %>% 
-  ivreg(., data = df_80_final)))
-
-stargazer(table_5_models_80,
-          omit = "Constant",
-          title = "WALD ESTIMATES OF LABOR-SUPPLY MODELS 1980 DATA - REPLICATED",header = FALSE,type = "html",
-          dep.var.labels = c("Worked",
-                            "Weeks",
-                            "Hours",
-                            "Income",
-                            "Family Income"))
-
-stargazer(table_5_models_90,
-          omit = "Constant",
-          title = "WALD ESTIMATES OF LABOR-SUPPLY MODELS 1990 DATA - REPLICATED",header = FALSE,type = "html",
-          dep.var.labels = c("Worked",
-                            "Weeks",
-                            "Hours",
-                            "Income",
-                            "Family Income"))
-
-
-
-
-
-rm(table_5_models_80,
-   table_5_models_90)
-``` 
-
-
-
-Now table 6
-```{r table_6, results = "asis"}
-create_model_formula <- function(dependent_var){
-  model <- as.formula(paste0(dependent_var, "~ morekids + m_age + boy1st + boy2nd + black_m + hisp_m + other_race_m | samesex +  m_age + boy1st + boy2nd + black_m + hisp_m + other_race_m"))
-  return(model)
-}
-
-table_6_models_80 <- c("worked_m",
-  "weeksm",
-  "hoursm",
-  "income_m",
-  "log(fam_inc)") %>% 
-  map(~(create_model_formula(.) %>% 
-          ivreg(data = df_80_final)))
-  
-
-table_6_models_90 <- c("worked_m",
-                    "week89m",
-                    "hour89m",
-                    "income_m",
-                    "log(fam_inc)") %>% 
-  map(~(create_model_formula(.) %>% 
-          ivreg(data = df_90_final)))
-
-stargazer(table_6_models_80,
-          keep = "morekidsTRUE",
-          title = "2SLS ESTIMATES OF LABOR-SUPPLY MODELS USING 1980 CENSUS DATA - REPLICATION",
-          notes = "Age at first birth omitted since I can't seem to find it.",
-          dep.var.labels = c("Worked",
-                            "Weeks",
-                            "Hours",
-                            "Income",
-                            "Family Income"),
-          type = "html")
-
-stargazer(table_6_models_90, keep = "morekidsTRUE",
-          title = "2SLS ESTIMATES OF LABOR-SUPPLY MODELS USING 1990 CENSUS DATA - REPLICATION",
-          notes = "Age at first birth omitted since I can't seem to find it.",
-          dep.var.labels = c("Worked",
-                            "Weeks",
-                            "Hours",
-                            "Income",
-                            "Family Income"),
-          type = "html")
-rm(table_6_models_80, table_6_models_90)
-```
 
 
 
 ## Maimonides Rule
 
 
-Mention somewhere HAC instead of moulton factor adjustment - only makes a large difference in the discontinuity sample.
+# Mention somewhere HAC instead of moulton factor adjustment - only makes a large difference in the discontinuity sample.
 
 #### Cleaning Grade 5
-```{r maimonides_grade_5}
 clean_maimonides_data <- function(dataset){
   clean_df <- dataset %>%
     mutate(
@@ -1214,181 +1059,44 @@ clean_maimonides_data <- function(dataset){
   return(clean_df)
   
 }
+
 df_final5_cleaned <- read_dta("Angrist and Lavy Grade 5.dta") %>% 
   clean_maimonides_data()
 
-##do stuff
+## Dataverse Method Grade 4
+library(dataverse)
+f <- get_file("final4.tab", "doi:10.7910/DVN/XRSUJU")
+
+# load it into memory
+tmp <- tempfile(fileext = ".dta")
+writeBin(as.vector(f), tmp)
+dat <- read_dta(tmp) %>% 
+  clean_maimonides_data()
 
 
-```
 
 
 #### Cleaning Grade 4
-```{r maimonides_grade_4}
 df_final4_cleaned <- read_dta("Angrist and Lavy Grade 4.dta") %>% 
   clean_maimonides_data()
 
-```
-
-
-## Replicating OLS 
-```{r replicating_maimonides, results = "asis"}
-## Grade 5
-col_1 <- lm(avgverb ~ classize, data = df_final5_cleaned)
-col_2 <- lm(avgverb ~ classize + tipuach, data = df_final5_cleaned)
-col_3 <- lm(avgverb ~ classize + tipuach + c_size, data = df_final5_cleaned)
-col_4 <- lm(avgmath ~ classize, data = df_final5_cleaned)
-col_5 <- lm(avgmath ~ classize + tipuach, data = df_final5_cleaned)
-col_6 <- lm(avgmath ~ classize + tipuach + c_size, data = df_final5_cleaned)
-## Grade 4
-col_7 <- lm(avgverb ~ classize, data = df_final4_cleaned)
-col_8 <- lm(avgverb ~ classize + tipuach, data = df_final4_cleaned)
-col_9 <- lm(avgverb ~ classize + tipuach + c_size, data = df_final4_cleaned)
-col_10 <- lm(avgmath ~ classize, data = df_final4_cleaned)
-col_11 <- lm(avgmath ~ classize + tipuach, data = df_final4_cleaned)
-col_12 <- lm(avgmath ~ classize + tipuach + c_size, data = df_final4_cleaned)
-
-SEs <- list(col_1,
-            col_2,
-            col_3,
-            col_4,
-            col_5,
-            col_6,
-            col_7,
-            col_8,
-            col_9,
-            col_10,
-            col_11,
-            col_12) %>% 
-  map(~(vcovHAC(.) %>% 
-          diag() %>% 
-          sqrt))
-
-stargazer(col_1,
-          col_2,
-          col_3,
-          col_4,
-          col_5,
-          col_6,
-          col_7,
-          col_8,
-          col_9,
-          col_10,
-          col_11,
-          col_12,
-          se = SEs,
-          omit.table.layout = "sn",
-          type = "html",
-          omit = "Constant",
-          dep.var.labels = c("English Comprehension",
-                             "Maths",
-                             "English Comprehension",
-                             "Maths"),
-          column.labels = c("Grade 5",
-                            "Grade 4"),
-          column.separate = c(6, 6),
-          initial.zero = FALSE,
-          notes = "HAC standard errors used instead of Moulton factor adjustment.")
-rm(col_1,
-   col_2,
-   col_3,
-   col_4,
-   col_5,
-   col_6,
-   col_7,
-   col_8,
-   col_9,
-   col_10,
-   col_11,
-   col_12
-   )
-```
-
-
-## Replicating IV
-```{r maimonides_IV, results = "asis"}
-
-## Grade 5
-
-
-iv_maim_verb_full_5 <- ivreg(avgverb ~ classize + tipuach + c_size + c_size_squared | func1 + tipuach + c_size + c_size_squared, data = df_final5_cleaned)
-iv_maim_math_full_5 <- ivreg(avgmath ~ classize + tipuach + c_size + c_size_squared | func1 + tipuach + c_size + c_size_squared, data = df_final5_cleaned)
-
-iv_maim_verb_disc_5 <- ivreg(avgverb ~ classize + tipuach + c_size + c_size_squared | func1 + tipuach + c_size + c_size_squared, data = df_final5_cleaned %>% filter(disc == 1))
-iv_maim_math_disc_5 <- ivreg(avgmath ~ classize + tipuach + c_size + c_size_squared | func1 + tipuach + c_size + c_size_squared, data = df_final5_cleaned %>% filter(disc == 1))
-
-
-## Grade 4
-
-iv_maim_verb_full_4 <- ivreg(avgverb ~ classize + tipuach + c_size + c_size_squared | func1 + tipuach + c_size + c_size_squared, data = df_final4_cleaned)
-iv_maim_math_full_4 <- ivreg(avgmath ~ classize + tipuach + c_size + c_size_squared | func1 + tipuach + c_size + c_size_squared, data = df_final4_cleaned)
-
-iv_maim_verb_disc_4 <- ivreg(avgverb ~ classize + tipuach + c_size + c_size_squared | func1 + tipuach + c_size + c_size_squared, data = df_final4_cleaned %>% filter(disc == 1))
-iv_maim_math_disc_4 <- ivreg(avgmath ~ classize + tipuach + c_size + c_size_squared | func1 + tipuach + c_size + c_size_squared, data = df_final4_cleaned %>% filter(disc == 1))
-
-
-
-
-SEs_IV_5 <- list(
-  iv_maim_verb_full_5,
-  iv_maim_math_full_5,
-  iv_maim_verb_disc_5,
-  iv_maim_math_disc_5
-) %>%
-  map(~(vcovHAC(.) %>% 
-          diag() %>% 
-          sqrt))
-stargazer(iv_maim_verb_full_5,
-          iv_maim_math_full_5,
-          iv_maim_verb_disc_5,
-          iv_maim_math_disc_5,
-          se = SEs_IV_5,
-          column.labels = c("Full Sample", "Discontinuity Sample"),
-          column.separate = c(2, 2),
-          type = "html",
-          title = "IV Maimonides Rule Fifth Grade",
-          notes = "HAC standard errors used instead of Moulton factor adjustment.")
-
-
-
-SEs_IV_4 <- list(
-  iv_maim_verb_full_4,
-  iv_maim_math_full_4,
-  iv_maim_verb_disc_4,
-  iv_maim_math_disc_4
-) %>%
-  map(~(vcovHAC(.) %>% 
-          diag() %>% 
-          sqrt))
-stargazer(iv_maim_verb_full_4,
-          iv_maim_math_full_4,
-          iv_maim_verb_disc_4,
-          iv_maim_math_disc_4,
-          se = SEs_IV_4,
-          column.labels = c("Full Sample", "Discontinuity Sample"),
-          column.separate = c(2, 2),
-          type = "html",
-          title = "IV Maimonides Rule Fourth Grade",
-          notes = "HAC standard errors used instead of Moulton factor adjustment.")
-
-rm(SEs_IV_4,
-   SEs_IV_5,
-   SEs,
-   iv_maim_math_disc_4,
-   iv_maim_math_full_4,
-   iv_maim_verb_disc_4,
-   iv_maim_verb_full_4,
-   iv_maim_math_disc_5,
-   iv_maim_math_full_5,
-   iv_maim_verb_disc_5,
-   iv_maim_verb_full_5)
+all_equal(dat,
+          df_final4_cleaned)
 
 ```
+
 
 
 # Checking First Stage
 
 ## Angrist and Evans
+
+@Angrist_Evans explores the effect of fertility on household labour supply - they instrument fertility, the number of children a household has, with a same-sex variable that takes the value 1 if a household has two children of identical sex and 0 otherwise. The paper's findings suggest that having an additional child reduces a mother's labour supply somewhat substantially.
+
+In this context, a complier is a couple that are more likely to have an additional child if their current children have the same-sex - there is a well documented gender mix preference amongst parents. However, for the LATE estimate to be valid there cannot be any couples that are induced not to have an additional child if their current children are the same-sex. 
+
+A plausible explanation is that there are economies of scale to raising two boys or two girls that are potentially lost when a third child of ex-ante unknown gender is raised. 
+
 ```{r run_first_stage_AE}
 
 AE_data_80 <- df_80_final %>% 
@@ -1432,13 +1140,15 @@ AE_data_90 <- df_90_final %>%
 first_stage_interactions_80 <- AE_data_80 %>% 
   run_first_stage_interactions_fast(dataset = .,
                                     dependent_variable = "morekids",
-                                    instrument = "samesex") %>% 
+                                    instrument = "samesex",
+                                    vcov_func = vcovHC) %>% 
   mutate(dataset = "1980") %>% 
   select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm,  dataset, dydx_lo, dydx_hi, t_stat)
 first_stage_interactions_90 <- AE_data_90 %>% 
   run_first_stage_interactions_fast(dataset = .,
                                    dependent_variable = "morekids",
-                                   instrument = "samesex") %>% 
+                                   instrument = "samesex",
+                                   vcov_func = vcovHC) %>% 
   mutate(dataset = "1990") %>% 
   select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm, dataset, dydx_lo, dydx_hi, t_stat)
 
@@ -1624,6 +1334,16 @@ Moving to the quantile-quantile plot perfectly demonstrates the behaviour discus
 
 ## Maimonides' Rule
 
+@Angrist_Lavy use Maimonides' rule, which dictates that maximum class size should be 40 students, as an instrument for actual class size in a fuzzy regression discontinuity design exploring the effect of class size on test scores in English and maths. Their first stage takes the following form:
+
+$$
+\textit{class size}_i = \alpha + \beta \textit{predicted_class_size}_i + \gamma_1 enrollment_i + \gamma_2 enrollment^2_i + \gamma_3 \textit{pct_disadvantaged}_i + u_i
+$$
+where predicted class size is the class size according to Maimonides' rule. Due to the difficulties of accurately identifying interaction effects with limited data I choose to use the full sample (parametric fuzzy RDD) rather than the discontinuity sample with only approximately 400 observations. 
+
+
+It's hard to argue that defiers are likely to be present in this dataset, particularly with the covariates available, or even to conceptualise under what circumstances a defiant class/school could occur. 
+
 
 ```{r maim_FS}
 first_stage_interactions_maim_5 <- df_final5_cleaned %>% 
@@ -1634,7 +1354,9 @@ first_stage_interactions_maim_5 <- df_final5_cleaned %>%
          func1) %>% 
   run_first_stage_interactions_fast(dataset = .,
                                     dependent_variable = "classize",
-                                    instrument = "func1") %>% 
+                                    instrument = "func1",
+                                    vcov_func = sandwich::vcovCL,
+                                    cluster = df_final5_cleaned$classid) %>% 
   mutate(dataset = "Fifth Grade") %>% 
   select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm,  dataset, dydx_lo, dydx_hi, t_stat)
 
@@ -1646,7 +1368,9 @@ first_stage_interactions_maim_4 <- df_final4_cleaned %>%
          func1) %>% 
   run_first_stage_interactions_fast(dataset = .,
                                    dependent_variable = "classize",
-                                   instrument = "func1") %>% 
+                                   instrument = "func1",
+                                   vcov_func = sandwich::vcovCL,
+                                   cluster = df_final4_cleaned$classid) %>% 
   mutate(dataset = "Fourth Grade") %>% 
   select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm, dataset, dydx_lo, dydx_hi, t_stat)
 
@@ -1694,7 +1418,8 @@ first_stage_interactions_maimonides %>%
   facet_wrap(~dataset, scales = "free_x") +
   geom_hline(yintercept = 0, linetype = "longdash") +
   labs(y = "Partial Effect",
-       title = "Partial Effect Ranked - Maimonides' Instrument") +
+       title = "Partial Effect Ranked - Maimonides' Instrument",
+       caption = "Note: Standard errors clustered by class.") +
   scale_colour_manual(values = colour_pair) +
   guides(colour = "none")
 
@@ -1707,7 +1432,8 @@ first_stage_interactions_maimonides %>%
   scale_x_continuous(trans=negative_log_trans(10)) +
   scale_y_continuous(trans=negative_log_trans(10)) +
   labs(title = "QQ plot of P-values - Maimonides' Instrument",
-       caption = "Note: Both axes negative log(10) scale.") +
+       caption = "Note: Both axes negative log(10) scale. 
+       \n Standard errors clustered by class.") +
   facet_wrap(~dataset) +
   scale_colour_manual(values = colour_pair) +
   guides(colour = "none")
@@ -1716,6 +1442,9 @@ first_stage_interactions_maimonides %>%
 
 ## Autor Dorn Hanson
 
+In @Autor_Dorn_Hanson the authors investigate the effect of Chinese import competition on US labour markets.  The authors use a set of exogenous shocks or _shifts_, which industries are differentially exposed to, to obtain causal estimates. The identification strategy uses a so called "Bartik" or "shift-share" design - instrumenting US imports with changes in Chinese imports by other countries to generate plausibly exogenous temporal variation.
+
+This context is probably the most likely to be susceptible to defiers - it's plausible that US imports from China won't react monotonically to changes in third-party Chinese import trends.  
 ```{r adh_fs}
 df_china <- read_dta("Autor Dorn and Hanson China.dta")
 first_stage_interactions_ADH_manu <- df_china %>% 
@@ -1733,7 +1462,9 @@ first_stage_interactions_ADH_manu <- df_china %>%
   run_first_stage_interactions_fast(dataset = .,
                                     dependent_variable = "d_tradeusch_pw",
                                     instrument = "d_tradeotch_pw_lag",
-                                    weights = df_china$timepwt48) %>% 
+                                    weights = df_china$timepwt48,
+                                    vcov_func = vcovCL,
+                                    cluster = df_china$statefip) %>% 
   mutate(dataset = "ADH") %>% 
   select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm,  dataset, dydx_lo, dydx_hi, t_stat)
 
@@ -1777,7 +1508,8 @@ first_stage_interactions_ADH_manu %>%
   geom_hline(yintercept = 0, linetype = "longdash") +
   scale_colour_manual(values = colour_pair) +
   labs(title = "Partial Effects Ranked - Bartik Instrument",
-       y = "Partial Effect") +
+       y = "Partial Effect",
+       caption = "Note: Standard errors clustered by state.") +
   guides(colour = "none")
 ```
 
@@ -1792,7 +1524,7 @@ first_stage_interactions_ADH_manu %>%
   scale_x_continuous(trans=negative_log_trans(10)) +
   scale_y_continuous(trans=negative_log_trans(10)) +
   labs(title = "QQ plot of P-values - Bartik Instrument",
-       caption = "Note: Both axes use negative log(10) scale.") +
+       caption = "Note: Both axes use negative log(10) scale., \n Standard errors clustered by state.") +
   guides(colour = "none") +
   scale_colour_manual(values = colour_pair) 
 
@@ -1854,7 +1586,7 @@ adjusted_p_vals <- first_stage_summary %>%
 ```
 
 In conclusion, the saturated first stage test using the three papers shows mixed results.
-There's no evidence of defiance in @Angrist_Lavy's estimates of class size and grades and with 2000 observations we can be reasonably confident of test power - indeed, in this range we'd expect the saturated first test to excel in comparison to its machine learning cousin.
+There's no evidence of defiance in @Angrist_Lavy's estimates of class size and grades and with 2000 observations we can be reasonably confident of test power - indeed, in this range we'd expect the saturated first stage test to excel in comparison to its machine learning cousin.
 
 
 ```{r}
@@ -1915,11 +1647,14 @@ temp_df %>%
 rm(temp_df)
 ```
 
-The same-sex instrument estimates are variable.  On the one hand we can reject the null of no defiance at the 5\% significance level for the 1980 census data sample but not at 1\%; whilst we can't reject the null for the 1990 sample at even 10\% significance. A simple multiple comparison adjustment such as Holm-Bonferroni will lead to $p$-values of `r adjusted_p_vals`, respectively and we fail to reject the null hypothesis of no defiance.
+The same-sex instrument estimates are variable.  On the one hand we can reject the null of no defiance at the 5\% significance level for the 1980 census data sample but not at 1\%; whilst we can't reject the null for the 1990 sample at even 10\% significance. A simple multiple comparison adjustment such as Holm-Bonferroni will lead to $p$-values of `r adjusted_p_vals`, respectively and we fail to reject the null hypothesis of no defiance. The $p$-values reported in the table can be interpreted as the probability, under the null of no defiers, of observing a weakly more extreme defier in the sample.
 
 @Angrist_Evans's dataset is very large, whilst we might be confident in the power of the test it would probably be unwise to suggest that defiance of 0.05\% is enough to invalidate their identification strategy - especially when these defiers are so imprecisely estimated.
 
-Meanwhile, @Autor_Dorn_Hanson's identification strategy may be suspect - almost 7\% of the dataset are estimated to be defiers and we reject the null of no defiance at 0.1\% significance. 
+Meanwhile, @Autor_Dorn_Hanson's identification strategy may be suspect - almost 7\% of the dataset are estimated to be defiers, although formally we cannot reject the null hypothesis at the 5\% significance level.
+
+Overall, it would seem that the saturated first stage test is unable to detect the presence of defiers in the datasets considered. 
+
 
 
 
@@ -1931,6 +1666,8 @@ Meanwhile, @Autor_Dorn_Hanson's identification strategy may be suspect - almost 
 Write up about methodology and simulation performance
 
 ## Angrist and Evans
+
+
 
 ```{r random_forest_run}
 library(grf)
@@ -1973,6 +1710,11 @@ tau_hat_oob_AE <- bind_rows(tau_hat_oob_AE_90,
 
 ```
 
+
+The estimated heterogeneous instrument effects produce very different results, compared to the saturated test, using @Angrist_Evans's same-sex data. Whilst comparing instrument partial effects and heterogeneous treatment effects isn't quite an apples to apples comparison, it's surprising that the results are so different. 
+
+There's significant histogram mass less than 0, with non-negligible mass appearing at -0.1 in the 1990 census data. Moving onto the ranked heterogeneous effects, in the 1990 sample almost half of the observed individuals appear to be defiers. The increase in uncertainty estimating individual heterogeneous effects is stark. However, it's still suprising that so many defiers appear to be present when only 0.05\% of individuals were identified as defiers by the first test. Perhaps there's significant individual level heterogeneity that is destroyed by estimation at the subgroup level by the saturated first stage model.
+
 ```{r random_forest_plots}
 
 
@@ -2012,10 +1754,14 @@ tau_hat_results %>%
        title = "Heterogeneous Effects Ranked - Same-Sex Instrument") +
   guides(colour = "none")
 
-tau_hat_results %>% 
-  filter(reject_H0 == 1) 
+```
 
 
+
+The QQ plot of $p$-values in the 1990 sample almost perfectly fits the line of equality followed by movement above the line of equality at the 0.001th theoretical quantile. The causal forest method produces slightly different results for the 1980 sample. Here there's little evidence of the horizontal CDF we've grown to expect and limited evidence of defiers, in stark contrast to the 1990 sample.
+
+Such a large difference in results between tests and within tests between samples is puzzling and requires further investigation beyond the scope of this essay. 
+```{r}
 tau_hat_results %>% 
   ggplot(aes(sample = pval, colour = dataset)) +
   stat_qq(distribution = qunif)  +
@@ -2034,6 +1780,8 @@ tau_hat_results %>%
 
 
 ## Maimonides Rule
+
+Estimated instrument effects are diffuse and, again, not strictly positive in the Maimonides' rule instrument variable strategy. This is even more puzzling than the @Angrist_Evans's case discussed earlier since our first stage test found no evidence of defiance - not only were there no statistically significant defiers, there were no defiers detected at all. 
 
 
 
@@ -2090,7 +1838,7 @@ ggplot(tau_hat_oob_maimonides,
        title = "Heterogeneous Effects - Maimonides' Instrument") +
   theme_minimal() +
   guides(fill = "none")
-
+N_obs <- nrow(tau_hat_oob_maimonides)
 tau_hat_results_maimonides <- tau_hat_oob_maimonides %>%
   group_by(dataset) %>% 
   arrange(predictions) %>% 
@@ -2098,12 +1846,17 @@ tau_hat_results_maimonides <- tau_hat_oob_maimonides %>%
          prediction_lo = predictions - 1.96*sigma_hat,
          prediction_hi = predictions + 1.96*sigma_hat,
          t_stat = predictions / sigma_hat,
-         critical_value = qt(0.95, N_obs - 13, lower.tail = FALSE),
+         critical_value = qt(0.95, N_obs - 4, lower.tail = FALSE),
          pval = pt(t_stat, df = N_obs - 13),
          pval_holm = p.adjust(pval, method = "holm"),
          reject_H0 = ifelse(pval_holm < 0.05, 1, 0),
          rank = row_number())
+```
 
+The relatively small dataset, where we know the saturated first stage test outperforms causal forest, is reflected in the huge confidence intervals when displaying the ranked $p$-values. Many of the estimated negative effects aren't significantly different from 0 however this offers little comfort when there's still such an inexplicable difference between test results.
+
+
+```{r ranked_hc_maim}
 tau_hat_results_maimonides %>% 
   ggplot(aes(x = rank,
              y = predictions,
@@ -2115,14 +1868,17 @@ tau_hat_results_maimonides %>%
   geom_hline(yintercept = 0, linetype = "longdash") +
   facet_wrap(~dataset) +
   scale_colour_manual(values = colour_pair) +
-  labs(y = "Heterogeneous Effects Ranked - Maimonides' Instrument") +
+  labs(title = "Heterogeneous Effects Ranked - Maimonides' Instrument") +
   guides(colour = "none",
          fill = "none")
-
-tau_hat_results_maimonides %>% 
-  filter(reject_H0 == 1) 
+```
 
 
+
+The Maimonides' rule $p$-value QQ plot shows little evidence of a strong positive effect - there are very few $p$-values deep in the null. Evidence from the fifth grade suggests we may be concerned not only with a defiance problem, but also a weak instruments problem; the $p$-values hug the null hypothesis line of equality relatively closely.
+
+
+```{r maim_rf_qq}
 tau_hat_results_maimonides %>% 
   ggplot(aes(sample = pval, colour = dataset)) +
   stat_qq(distribution = qunif)  +
@@ -2139,6 +1895,7 @@ tau_hat_results_maimonides %>%
 ```
 
 ## Autor Dorn Hanson
+
 ```{r ADH_rf}
 
 ADH_matrix <- df_china %>% 
@@ -2167,10 +1924,9 @@ tau_hat_oob_ADH <- predict(forest_first_stage_ADH, estimate.variance = TRUE) %>%
 ```
 
 
+Moving onto @Autor_Dorn_Hanson's paper investigating imports and labour market outcomes leads to, yet again, wildly different conclusions to the saturated first stage test. However, in this case we find no evidence of defiers whereas before this was the most defiant dataset.
 
-
-
-
+The distribution of heterogeneous effects is strictly positive with a long right tail. This is the smallest dataset in the empirical application of our tests so results should be interpreted with caution, especially with such a large divergence between tests.
 ```{r ADH_rf_plot}
 
 ggplot(tau_hat_oob_ADH,
@@ -2181,14 +1937,14 @@ ggplot(tau_hat_oob_ADH,
        title = "Heterogeneous Effects - Bartik Instrument") +
   theme_minimal() +
   guides(fill = "none")
-
+N_obs <- nrow(tau_hat_oob_ADH)
 tau_hat_results_ADH <- tau_hat_oob_ADH %>%
   arrange(predictions) %>% 
   mutate(sigma_hat = sqrt(variance.estimates),
          prediction_lo = predictions - 1.96*sigma_hat,
          prediction_hi = predictions + 1.96*sigma_hat,
          t_stat = predictions / sigma_hat,
-         critical_value = qt(0.95, N_obs - 13, lower.tail = FALSE),
+         critical_value = qt(0.95, N_obs - 12, lower.tail = FALSE),
          pval = pt(t_stat, df = N_obs - 13),
          pval_holm = p.adjust(pval, method = "holm"),
          reject_H0 = ifelse(pval_holm < 0.05, 1, 0),
@@ -2205,7 +1961,13 @@ tau_hat_results_ADH %>%
        title = "Heterogeneous Effects Ranked - Bartik Instrument") +
   guides(colour = "none",
          fill = "none")
+```
 
+
+
+The quantile-quantile plot shows no evidence of "curve back" as we'd expect in a dataset with no estimated defiers and the smallest $p$-value is safely insignificant at all reasonable testing levels. 
+
+```{r qq_rf_ADH}
 tau_hat_results_ADH %>% 
   ggplot(aes(sample = pval, colour = dataset)) +
   stat_qq(distribution = qunif)  +
@@ -2222,7 +1984,7 @@ tau_hat_results_ADH %>%
 
 ## Results
 
-
+As we've seen, the honest causal forest results are an almost mirror opposite to the saturated first stage results. The only model with no detected defiers is @Autor_Dorn_Hanson's whereas there's strong evidence of defiers in evey other dataset.
 
 ```{r forest_summm, results = "asis"}
 tau_hat_results_all <- suppressWarnings(bind_rows(
@@ -2335,20 +2097,330 @@ rm(temp_df)
 
 ```
 
+
+Even after taking into account the increased uncertainty of estimating individual causal effects the monotonicity test is roundly failed in all 4 so-called "defiant" datasets. 
+
+
 # Conclusion
 
-```{r all_results, results="asis"}
+In this essay I've presented two methods to detect defiers in datasets of interest to economists. Power simulations suggest both tests give very similar results that aren't borne out in an empirical settings. One possibility is that there's significant confounding subgroup heterogeneity present in the datasets in question - a situation I don't explicitly model in the power simulations. Another explanation is that Simpson's paradox is striking with a vengeance. Heterogeneous causal effects generated on aggregate at the observed subgroup level aren't representative of individual heterogeneous effects and the causal forest method is picking this up whereas the saturated first stage model isn't.
 
-# all_results <- inner_join(first_stage_summary,
-#                           tau_hat_summary,
-#                           by = c("paper", "dataset"),
-#                           suffix = c("_first_stage", "_forest"))
-#
-
-```
+I'm cautious of accepting either interpretation above - honest causal forest is a relatively new estimation strategy and its properties in real-world, applied settings still aren't well understood. Occam's razor would perhaps suggest that the first stage tests should be trusted most - without a doubt further exploration is required. 
 
 # Appendix
 
+## Angrist and Evans Replication
+
+#### Table Two Summary Statistics
+
+Trying to recreate table 2
+```{r table_2}
+library(tidyr)
+AE_90_summary <- df_90_final %>% 
+  summarise(children_ever_born = mean(fertil - 1),
+            more_than_2 = mean(morekids),
+            mean_boy_first = mean(boy1st),
+            boy_2nd = mean(boy2nd),
+            two_boys = mean(boys2),
+            two_girls = mean(girls2),
+            samesex = mean(samesex),
+            age = mean(m_age),
+            worked = mean(worked_m),
+            weeks = mean(week89m),
+            hrs_wk = mean(hour89m),
+            labour_income_mum = mean(income_m),
+            labour_income_dad = mean(income_d, na.rm = TRUE),
+            fam_income = mean(fam_inc),
+            mean_non_wife = mean(nonmoi)) %>% 
+  gather(term, mean_90) 
+
+AE_80_summary <- df_80_final %>% 
+    summarise(children_ever_born = mean(fertil - 1),
+            more_than_2 = mean(morekids),
+            mean_boy_first = mean(boy1st),
+            boy_2nd = mean(boy2nd),
+            two_boys = mean(boys2),
+            two_girls = mean(girls2),
+            samesex = mean(samesex),
+            age = mean(m_age),
+            worked = mean(worked_m),
+            weeks = mean(weeksm),
+            hrs_wk = mean(hoursm),
+            labour_income_mum = mean(income_m),
+            labour_income_dad = mean(income_d, na.rm = TRUE),
+            fam_income = mean(fam_inc),
+            mean_non_wife = mean(nonmoi)) %>% 
+  gather(term, mean_80) 
+
+AE_summary <- inner_join(AE_80_summary, AE_90_summary, by = "term") %>% 
+  knitr::kable(digits = 3)
+AE_summary
+
+```
+
+#### Regression Results
+
+Recreating Table 5
+```{r table_5, results = "asis"}
+
+table_5_models_90 <- c("worked_m",
+  "week89m",
+  "hour89m",
+  "income_m",
+  "log(fam_inc)") %>%
+  map(~(
+  paste0(., " ~ morekids | samesex") %>% 
+  as.formula() %>% 
+  ivreg(., data = df_90_final)))
+
+table_5_models_80 <- c("worked_m",
+  "weeksm",
+  "hoursm",
+  "income_m",
+  "log(fam_inc)") %>% 
+  map(~(
+  paste0(., " ~ morekids | samesex") %>% 
+  as.formula() %>% 
+  ivreg(., data = df_80_final)))
+
+stargazer(table_5_models_80,
+          omit = "Constant",
+          title = "WALD ESTIMATES OF LABOR-SUPPLY MODELS 1980 DATA - REPLICATED",header = FALSE,type = "html",
+          dep.var.labels = c("Worked",
+                            "Weeks",
+                            "Hours",
+                            "Income",
+                            "Family Income"))
+
+stargazer(table_5_models_90,
+          omit = "Constant",
+          title = "WALD ESTIMATES OF LABOR-SUPPLY MODELS 1990 DATA - REPLICATED",header = FALSE,type = "html",
+          dep.var.labels = c("Worked",
+                            "Weeks",
+                            "Hours",
+                            "Income",
+                            "Family Income"))
+
+
+
+
+
+rm(table_5_models_80,
+   table_5_models_90)
+``` 
+
+
+
+
+Now table 6
+```{r table_6, results = "asis"}
+create_model_formula <- function(dependent_var){
+  model <- as.formula(paste0(dependent_var, "~ morekids + m_age + boy1st + boy2nd + black_m + hisp_m + other_race_m | samesex +  m_age + boy1st + boy2nd + black_m + hisp_m + other_race_m"))
+  return(model)
+}
+
+table_6_models_80 <- c("worked_m",
+  "weeksm",
+  "hoursm",
+  "income_m",
+  "log(fam_inc)") %>% 
+  map(~(create_model_formula(.) %>% 
+          ivreg(data = df_80_final)))
+  
+
+table_6_models_90 <- c("worked_m",
+                    "week89m",
+                    "hour89m",
+                    "income_m",
+                    "log(fam_inc)") %>% 
+  map(~(create_model_formula(.) %>% 
+          ivreg(data = df_90_final)))
+
+stargazer(table_6_models_80,
+          keep = "morekidsTRUE",
+          title = "2SLS ESTIMATES OF LABOR-SUPPLY MODELS USING 1980 CENSUS DATA - REPLICATION",
+          notes = "Age at first birth omitted since I can't seem to find it.",
+          dep.var.labels = c("Worked",
+                            "Weeks",
+                            "Hours",
+                            "Income",
+                            "Family Income"),
+          type = "html")
+
+stargazer(table_6_models_90, keep = "morekidsTRUE",
+          title = "2SLS ESTIMATES OF LABOR-SUPPLY MODELS USING 1990 CENSUS DATA - REPLICATION",
+          notes = "Age at first birth omitted since I can't seem to find it.",
+          dep.var.labels = c("Worked",
+                            "Weeks",
+                            "Hours",
+                            "Income",
+                            "Family Income"),
+          type = "html")
+rm(table_6_models_80, table_6_models_90)
+```
+
+## Maimonides' Rule
+
+
+
+## Replicating OLS 
+```{r replicating_maimonides, results = "asis"}
+## Grade 5
+col_1 <- lm(avgverb ~ classize, data = df_final5_cleaned)
+col_2 <- lm(avgverb ~ classize + tipuach, data = df_final5_cleaned)
+col_3 <- lm(avgverb ~ classize + tipuach + c_size, data = df_final5_cleaned)
+col_4 <- lm(avgmath ~ classize, data = df_final5_cleaned)
+col_5 <- lm(avgmath ~ classize + tipuach, data = df_final5_cleaned)
+col_6 <- lm(avgmath ~ classize + tipuach + c_size, data = df_final5_cleaned)
+## Grade 4
+col_7 <- lm(avgverb ~ classize, data = df_final4_cleaned)
+col_8 <- lm(avgverb ~ classize + tipuach, data = df_final4_cleaned)
+col_9 <- lm(avgverb ~ classize + tipuach + c_size, data = df_final4_cleaned)
+col_10 <- lm(avgmath ~ classize, data = df_final4_cleaned)
+col_11 <- lm(avgmath ~ classize + tipuach, data = df_final4_cleaned)
+col_12 <- lm(avgmath ~ classize + tipuach + c_size, data = df_final4_cleaned)
+
+SEs <- list(col_1,
+            col_2,
+            col_3,
+            col_4,
+            col_5,
+            col_6,
+            col_7,
+            col_8,
+            col_9,
+            col_10,
+            col_11,
+            col_12) %>% 
+  map(~(vcovHAC(.) %>% 
+          diag() %>% 
+          sqrt))
+
+stargazer(col_1,
+          col_2,
+          col_3,
+          col_4,
+          col_5,
+          col_6,
+          col_7,
+          col_8,
+          col_9,
+          col_10,
+          col_11,
+          col_12,
+          se = SEs,
+          omit.table.layout = "sn",
+          type = "html",
+          omit = "Constant",
+          dep.var.labels = c("English Comprehension",
+                             "Maths",
+                             "English Comprehension",
+                             "Maths"),
+          column.labels = c("Grade 5",
+                            "Grade 4"),
+          column.separate = c(6, 6),
+          initial.zero = FALSE,
+          notes = "HAC standard errors used instead of Moulton factor adjustment.")
+rm(col_1,
+   col_2,
+   col_3,
+   col_4,
+   col_5,
+   col_6,
+   col_7,
+   col_8,
+   col_9,
+   col_10,
+   col_11,
+   col_12
+   )
+```
+
+
+
+## Replicating IV
+```{r maimonides_IV, results = "asis"}
+
+## Grade 5
+
+
+iv_maim_verb_full_5 <- ivreg(avgverb ~ classize + tipuach + c_size + c_size_squared | func1 + tipuach + c_size + c_size_squared, data = df_final5_cleaned)
+iv_maim_math_full_5 <- ivreg(avgmath ~ classize + tipuach + c_size + c_size_squared | func1 + tipuach + c_size + c_size_squared, data = df_final5_cleaned)
+
+iv_maim_verb_disc_5 <- ivreg(avgverb ~ classize + tipuach + c_size + c_size_squared | func1 + tipuach + c_size + c_size_squared, data = df_final5_cleaned %>% filter(disc == 1))
+iv_maim_math_disc_5 <- ivreg(avgmath ~ classize + tipuach + c_size + c_size_squared | func1 + tipuach + c_size + c_size_squared, data = df_final5_cleaned %>% filter(disc == 1))
+
+
+## Grade 4
+
+iv_maim_verb_full_4 <- ivreg(avgverb ~ classize + tipuach + c_size + c_size_squared | func1 + tipuach + c_size + c_size_squared, data = df_final4_cleaned)
+iv_maim_math_full_4 <- ivreg(avgmath ~ classize + tipuach + c_size + c_size_squared | func1 + tipuach + c_size + c_size_squared, data = df_final4_cleaned)
+
+iv_maim_verb_disc_4 <- ivreg(avgverb ~ classize + tipuach + c_size + c_size_squared | func1 + tipuach + c_size + c_size_squared, data = df_final4_cleaned %>% filter(disc == 1))
+iv_maim_math_disc_4 <- ivreg(avgmath ~ classize + tipuach + c_size + c_size_squared | func1 + tipuach + c_size + c_size_squared, data = df_final4_cleaned %>% filter(disc == 1))
+
+
+
+
+SEs_IV_5 <- list(
+  iv_maim_verb_full_5,
+  iv_maim_math_full_5,
+  iv_maim_verb_disc_5,
+  iv_maim_math_disc_5
+) %>%
+  map(~(vcovHAC(.) %>% 
+          diag() %>% 
+          sqrt))
+stargazer(iv_maim_verb_full_5,
+          iv_maim_math_full_5,
+          iv_maim_verb_disc_5,
+          iv_maim_math_disc_5,
+          se = SEs_IV_5,
+          column.labels = c("Full Sample", "Discontinuity Sample"),
+          column.separate = c(2, 2),
+          type = "html",
+          title = "IV Maimonides Rule Fifth Grade",
+          notes = "HAC standard errors used instead of Moulton factor adjustment.")
+
+
+
+SEs_IV_4 <- list(
+  iv_maim_verb_full_4,
+  iv_maim_math_full_4,
+  iv_maim_verb_disc_4,
+  iv_maim_math_disc_4
+) %>%
+  map(~(vcovHAC(.) %>% 
+          diag() %>% 
+          sqrt))
+stargazer(iv_maim_verb_full_4,
+          iv_maim_math_full_4,
+          iv_maim_verb_disc_4,
+          iv_maim_math_disc_4,
+          se = SEs_IV_4,
+          column.labels = c("Full Sample", "Discontinuity Sample"),
+          column.separate = c(2, 2),
+          type = "html",
+          title = "IV Maimonides Rule Fourth Grade",
+          notes = "HAC standard errors used instead of Moulton factor adjustment.")
+
+rm(SEs_IV_4,
+   SEs_IV_5,
+   SEs,
+   iv_maim_math_disc_4,
+   iv_maim_math_full_4,
+   iv_maim_verb_disc_4,
+   iv_maim_verb_full_4,
+   iv_maim_math_disc_5,
+   iv_maim_math_full_5,
+   iv_maim_verb_disc_5,
+   iv_maim_verb_full_5)
+
+```
+
+```{r save_image}
+save.image("cached_run.RData")
+```
 
 # References
 
