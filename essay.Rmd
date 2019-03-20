@@ -1319,7 +1319,10 @@ bind_rows(sfs_row,
 
 ```
 
-If, under the null, one draw of the data with 1000 observations led to 5\% of test statistics appearing significant we'd need to control the family wise error rate since we'd certainly reject the null hypothesis for every subsequent draw of the data - i.e. we wish to control the error rate at the test level and not observation level. Since only 0.1\% and 0\% of the observations in a given test are significant and the adjusted critical value is far greater than the largest test statistic we can conclude with reasonable certainty that additional control isn't required. 
+&nbsp;
+
+
+If, under the null, one draw of the data with 1000 observations led to 5\% of test statistics appearing significant we'd need to control the family wise error rate since we'd certainly reject the null hypothesis for every subsequent draw of the data - i.e. we wish to control the error rate at the test level and not observation level. Since only `r sfs_row$"Proportion Significant"*100`\% and `r rf_row$"Proportion Significant"*100`\% of the observations in a given test are significant and the adjusted critical value is far greater than the largest test statistic we can conclude with reasonable certainty that additional control isn't required. 
 
 
 # Empirical Results
