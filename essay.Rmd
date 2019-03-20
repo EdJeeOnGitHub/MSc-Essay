@@ -20,8 +20,7 @@ abstract: I present some practical tests for detecting failure of the monotonici
   show similar and impressive results for the saturated first stage and Random Forest
   methods however this similarity isn't borne out in applied settings leading to a
   puzzling divergence in test results.
-header-includes:
-   - \usepackage{longtable}
+
 ---
 
 ```{r setup, include=FALSE}
@@ -35,8 +34,8 @@ knitr::opts_chunk$set(echo = TRUE,
 
 
 
-<!-- &nbsp; -->
-<!-- &nbsp; -->
+&nbsp;
+&nbsp;
 
 <!-- \newline -->
 <!-- \newline -->
@@ -2854,7 +2853,7 @@ rm(SEs_IV_4,
 
 ```
 
-```{r save_image}
+```{r save_image, cache = TRUE}
 save.image("C:/Users/edjee/Dropbox/Ed/cached_run.RData")
 ```
 
