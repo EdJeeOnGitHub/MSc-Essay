@@ -484,7 +484,7 @@ if (run_sim) {
   
   simulations_power <- coef_list %>% 
     future_map_dfr(simulation_func,
-                   .options = future_options(globals = c("sim_data",
+                   .options = future_options(globals = c(
                                                          "run_first_stage_interactions_fast",
                                                          "find_SEs",
                                                          "create_fake_data",
@@ -1070,7 +1070,7 @@ if (run_sim) {
     map(abs) %>% 
     future_map_dfr(simulation_func,
                    force_positive = TRUE,
-                   .options = future_options(globals = c("sim_data",
+                   .options = future_options(globals = c(
                                                          "run_first_stage_interactions_fast",
                                                          "find_SEs",
                                                          "create_fake_data",
