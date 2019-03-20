@@ -42,7 +42,9 @@ knitr::opts_chunk$set(echo = TRUE,
 
 The LATE theorem is a cornerstone of identification in economics and labour economists in particular have popularised and preached its virtues. Considering the theorem's importance relatively little effort has been expended ensuring the theorem's assumptions are met in the dataset in question. This essay aims to promote a practical methodology that can be incorporated into current instrumental variables workflow in order to clearly aid researchers in verifying that necessary, but not sufficient, conditions are met empirically in the sample.
 
-Checking that the first stage "goes the right way" through the use of interaction terms or subsampling is common knowledge amongst applied practitioners but rarely discussed in depth. I formalise this notion and present some novel contributions of potential interest to social science researchers using saturated first stage regressions and negative log-log $p$-value transforms popularised by genome wide association studies (GWAS) to present visually striking evidence for or against monotonicity. Next, I show how advances in causal econometric inference using machine learning techniques, developed by @Wager_and_Athey, can be adapted to estimate the underlying first-stage heterogeneity and provide an alternative to the saturated regression model. I explore the power of the two tests in simulation studies in comparison to @RESTAT's monotonicity test and find XYZ. Finally, I take the tests to the data by applying the methodologies to various seminal papers in labour economics and find mixed evidence of defier presence.
+Checking that the first stage "goes the right way" through the use of interaction terms or subsampling is common knowledge amongst applied practitioners but rarely discussed in depth. I formalise this notion and present some novel contributions of potential interest to social science researchers using saturated first stage regressions and negative log-log $p$-value transforms popularised by genome wide association studies (GWAS) to present visually striking evidence for or against monotonicity. Next, I show how advances in causal econometric inference using machine learning techniques, developed by @Wager_and_Athey, can be adapted to estimate the underlying first-stage heterogeneity and provide an alternative to the saturated regression model. I explore test power in simulations under a range of data generating processes and find promising results; test power approaches 100\% in large datasets even at low levels of defiance. 
+
+Finally, I take the tests to the data by applying the methodologies to various seminal papers in labour economics and find mixed evidence of defier presence and a surprising divergence in test results. Comparing model results graphically provides some illumination but ultimately the large disagreement in test results is left unexplained. 
 
 ```{r code_prelims}
 library(Rfast)
@@ -73,7 +75,7 @@ library(patchwork)
 
 The LATE theorem [@Angrist_Imbens] describes four key assumptions under which instrumental variables regression will identify a causal effect for a specific subpopulation, "compliers", in the presence of heterogeneous effects.
 
-Using the random coefficient notation of Mostly Harmless Econometrics [@MHE] we have a  potential outcome $Y_i(d, z)$ corresponding to an individual $i$ with treatment status $D_i = d$ and instrument value $Z_i = z$. Observed treatment status is:
+Using the random coefficient notation of Mostly Harmless Econometrics [@MHE] there is a potential outcome $Y_i(d, z)$ corresponding to an individual $i$ with treatment status $D_i = d$ and instrument value $Z_i = z$. Observed treatment status is:
 
 $$
 D_i = D_{0i} + (D_{1i} - D_{0i})Z_i = \pi_0 + \pi_{1i}Z_i + \epsilon_i
@@ -101,11 +103,18 @@ The Wald estimator under assumptions 1-4 is often criticised for lack of externa
 On the other hand the Wald estimator in the presence of defiers is near useless to us. Not only does it lack external validity but it fails to uncover a meaningful internally valid estimate. This, in part, motivates the importance of checking monotonicity.
 
 
-## Literature
+## Literature and Data
+### Literature
+There are two papers currently in the literature that explore monotonicity tests in the LATE theorem. @kitagawa derives a test of independence, exclusion and monotonicity which he collectively labels validity using a "variance weighted Kolmogorov-Smirnov test statistic". Essentially, Kitagawa's test recognises that, under instrument validity, the probability density functions of treated and control groups must be nested in certain ways. Kitagawa's test doesn't rely on covariates unlike the tests presented in this essay, however calculating the test statistic is far harder than the simple tests presented in this essay.
 
-There are two papers of direct relevance to monotonicity tests. @kitagawa's test for instrument validity and @RESTAT's.   
+Another paper considering the monotonicity assumption is @RESTAT's. Mourifie and Wan's approach complements Kitagawa's but differs slightly. Rather than testing empirical distribution functions, Mourifie and Wan consider the problem using a conditional moment inequality which leads to testable implications using results from @CLR. Mourife and Wan's approach is simple to implement in Stata using appropriate packages. Unfortunately, due to essay word limits and the fact that honest causal forest is yet to be implemented in Stata, comparisons between Mourifie and Wan's test and my approach aren't presented in this essay. 
+
+### Data
+
+I collect data from three well-known papers in the labour literature, each with a slightly different flavour of instrument: @Angrist_Evans use the now famous same-sex binary instrument and corresponding Wald estimator to estimate fertility's effect on household labour supply; @Angrist_Lavy use Maimonides' Rule as an instrumental variable in a fuzzy RDD identification strategy to uncover the causal effects of class size on test scores and finally I explore @Autor_Dorn_Hanson's "Bartik" or shift-share instrument for Chinese imports and regional labour market outcomes.
 
 
+Data is first cleaned, following provided code files as best as possible; summarised and checked against the original paper and finally main results are replicated. Every paper considered successfuly replicates and  often coefficient and standard error estimates are identical to their original counterparts. Replication steps and details of each paper's main result can be found in the appendix.
 
 
 
@@ -161,9 +170,9 @@ Another way to consider the above is through consideration of the __closure prin
 Searching for the most adverse test-static, almost conditioning on significance, seems like a guaranteed way to introduce "fishing" or "$p$-hacking" - to ease such concerns I present a rigorous array of power and size simulations and show that a Romano-Wolf adjustment, which lets the data speak to hypothesis dependency through resampling, is far too conservative for the problem at hand.
 
 
-Moving onto our second concern, test power; the model parameters are well-identified since whilst we're testing $N$ hypotheses, the number of effective parameters we wish to estimate are much lower in fact, only $2K + 1$. The problem can be reconceptualised as constructing prediction intervals for the partial derivates which, whilst heterogeneous, only vary at the subgroup level. This reduction in granularity speaks to the trade-off inherent in heterogeneous causal identification. Whilst we may believe treatment effects vary at the individual level, using conventional methods in the cross-section, we can only identify an average treatment effect for observed subgroups - later in the essay I attempt to use @Wager_and_Athey's causal random forest to address this limitation. 
+Moving onto our second concern, test power: the model parameters are well-identified since whilst we test $N$ hypotheses, the number of effective parameters we wish to estimate are much lower in fact, only $2K + 1$. The problem can be reconceptualised as constructing prediction intervals for the partial derivates which, whilst heterogeneous, only vary at the subgroup level. This reduction in granularity speaks to the trade-off inherent in heterogeneous causal identification. Whilst we may believe treatment effects vary at the individual level, using conventional methods in the cross-section, we can only identify an average treatment effect for observed subgroups - later in the essay I attempt to use @Wager_and_Athey's causal random forest to address this limitation. 
 
-In conclusion, the first stage interaction test involves estimating the saturated regression and forming multiplicity adjusted one-sided test statistics for the partial derivative $\frac{ \hat{\partial D_i}}{ \hat{\partial Z_i}}$ and finding the most adverse test statistic/minimum $p$-value.
+In conclusion, the first stage interaction test involves estimating the saturated regression, formed by interacting the instrument with available covariates and estimating the instrument partial effect, i.e.the  partial derivative $\frac{ \hat{\partial D_i}}{ \hat{\partial Z_i}}$. Next, we find the most extreme defier with the most adverse test statistic/smallest $p$-value and test the one-sided null hypothesis for negative (positive) partial effects.
 
 ```{r first_stage_test_function}
 # Run Honest Causal Forest on dataframe with VERY specific naming conventions - only use with data from
@@ -278,13 +287,18 @@ Honest causal forest [@Athey7353; @Athey_Wager_Tibshirani; @Wager_and_Athey] att
 
 Individual trees are prone to overfitting, to overcome this bootstrapped aggregation (bagging) is used to fit many trees using bootstrapped samples - hence a random forest. This method gives heterogeneous estimates from regressing the treatment on instrument status.
 
-The testing procedure is therefore similar to the saturated first stage method. We construct a test statistic for the most extreme defier, which will be asymptotically normal, and perform a one-sided hypothesis test.
+
+$$
+D_i = \pi_0 + \pi_{1i}(x_{1i}, x_{2i}, ...)Z_i + \sum_{k=1}^K \gamma_{ki}x_{ki} + \epsilon_i
+$$
+
+The testing procedure is therefore similar to the saturated first stage method. We estimate the equation above, using the honest causal forest implemented in the `grf` R library by @Athey_Wager_Tibshirani. Next, we construct a test statistic for the most extreme defier, which will be asymptotically normally distributed, and perform a one-sided hypothesis test of the heterogeneous main effect.
 
 An advantage of honest causal forest is that it offers a method to estimate heterogeneous individual level causal effects rather than each individual's subgroup heterogeneous effect which only varies within the subgroup due to variation in an individual's covariates. However, there's a tradeoff - all else equal we'd expect the uncertainty of individual causal estimates to be far larger than those estimated at the subgroup level. Indeed, this greater uncertainty appears empirically when we take the test to the data. 
 
 Another disadvantage of honest causal forest is its relatively poor performance with few numbers of covariates. @Athey_Wager_Tibshirani recommend at least three covariates; the power simulations presented below use 4 covariates and every paper replicated in this essay have at least three covariates so this constraint isn't as strict as it may appear at first.
 
-Finally, another issue with honest causal forest - in this essay at least - is its large computational cost. Fitting 8,000 simulation draws of honest causal forest was extremely computationally intensive. Furthermore, fitting @Angrist_Evans's census data proved prohibitively expensive and a random, smaller, sample had to be fit instead.  This increased complexity and computational cost may be a stumbling block for applied practitioners seeking to implement honest causal forest in their own work.
+Finally, another issue with honest causal forest - in this essay at least - is its large computational cost. Fitting 24,000 simulation draws of honest causal forest is extremely computationally intensive. Furthermore, fitting @Angrist_Evans's census data proved prohibitively expensive and a random, smaller, sample is fit instead.  This increased complexity and computational cost may be a stumbling block for applied practitioners seeking to implement honest causal forest in their own work.
 
 # Simulations
 
@@ -1143,12 +1157,8 @@ Romano-Wolf stuff here.
 
 
 
-# Data and Replication
+# Empirical Results
 
-I collect data from three well-known papers in the labour literature, each with a slightly different flavour of instrument: @Angrist_Evans use the now famous same-sex binary instrument and corresponding Wald estimator to estimate fertility's effect on household labour supply; @Angrist_Lavy use Maimonides' Rule as an instrumental variable in a fuzzy RDD identification strategy to uncover the causal effects of class size on test scores and finally I explore @Autor_Dorn_Hanson's "Bartik" or shift-share instrument for Chinese imports and regional labour market outcomes.
-
-
-Data is first cleaned, following provided code files as best as possible; summarised and checked against the original paper and finally main results are replicated. Every paper considered successfuly replicates and  often coefficient and standard error estimates are identical to their original counterparts.
 
 
 ```{r data_import}
@@ -2559,7 +2569,7 @@ q
 
 # Conclusion
 
-In this essay I've presented two methods to detect defiers in datasets of interest to economists. Power simulations show that both tests are  powerful under a range of adverse data generating specifications and in the face of model misspecification, although both tests suffer to detect non-linear, heterogeneous defiance in smaller datasets. Additional control of test size is unnecessary and only serves to limit test power in both cases.
+In this essay I've presented two methods to detect defiers in datasets of interest to economists. Power simulations show that both tests are  powerful under a range of adverse data generating specifications and in the face of model misspecification, although both tests struggle to detect non-linear, heterogeneous defiance in smaller datasets. Additional control of test size is unnecessary and only serves to limit test power in both cases.
 
  Simulations suggest both tests produce similar results but this isn't borne out in an empirical setting. One possible explanation is that Simpson's paradox is striking with a vengeance. Heterogeneous causal effects generated on aggregate at the observed subgroup level aren't representative of individual heterogeneous effects and the causal forest method is picking this up whereas the saturated first stage model isn't. However, I'm cautious of fully accepting the above interpretation - honest causal forest is a relatively new estimation strategy and its properties in real-world, applied settings still aren't well understood. Occam's razor would perhaps suggest that the first stage tests should be trusted most - without a doubt further exploration is required.
  
@@ -2569,7 +2579,7 @@ In this essay I've presented two methods to detect defiers in datasets of intere
  The evidence taking the tests to the data is decidedly inconclusive. On the one hand the honest causal forest based test detects defiers with a high degree of certainty and statistical signifance however this behaviour isn't replicated by the saturated first stage based test. It's hard to conclude with any reasonable degree of certainty if defiers are indeed present in the datasets in question without further research - particularly into divergences between the two tests which I fail to replicate through numerous simulations.
 
  
- Throughout the essay I've tried to present visualisations as a convenient tool to assist labour economists in detecting the presence of defiers in their own datasets. Stata's `margins` command and R's port of the command in the `margins` package make the saturated first stage test particularly easy to implement.
+ Throughout the essay I've tried to present visualisations as a convenient tool to assist labour economists in detecting the presence of defiers in their own datasets. Stata's `margins` command and R's port of the command in the `margins` package make the saturated first stage test particularly easy to implement for future researchers.
 
 
 # Appendix
