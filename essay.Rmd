@@ -1153,7 +1153,10 @@ simulations_size %>%
 
 #### Romano-Wolf
 
-It's difficult to implement Romano and Wolf's resampling multiple adjustment procedure with one-sided tests in R - instead I demonstrate that the procedure is too conservative when considering data generated under a two-sided null hypothesis. With 1000 draws of the data we'd expect to observe approximately 5\% of test statistics to be greater than the _original_ critical value - however it's clear that 
+It's difficult to implement Romano and Wolf's resampling multiple adjustment procedure with one-sided tests in R - instead I offer suggestive evidence that the procedure is too conservative when considering data generated under a two-sided null hypothesis. Full proof via simulation would require simulating $N$ datasets and resampling each dataset $n$ times to form Romano-Wolf adjusted critical values which is omitted in this essay for computational reasons.
+
+
+
 
 ```{r}
 library(StepwiseTest)
@@ -1238,7 +1241,7 @@ anon_function_rf <- function(dummy_arg,
     select(t_stat) %>% 
     pull()
 }
-run_sim <- TRUE
+run_sim <- FALSE
 if (run_sim){
   plan(multisession)
   model_boot_rf <- 1:500 %>% 
@@ -1299,8 +1302,8 @@ bind_rows(sfs_row,
                          "Max Test Statistic"),
              decimals = 2) %>% 
   fmt_percent(
-    col
-  )
+    columns = "Proportion Significant"
+  ) %>%
     tab_header(
     title = "Romano-Wolf Adjustment"
   ) 
@@ -1309,6 +1312,7 @@ bind_rows(sfs_row,
 
 ```
 
+If, under the null, one draw of the data with 1000 observations led to 5\% of test statistics appearing significant we'd need to control the family wise error rate since we'd certainly reject the null hypothesis for every subsequent draw of the data - i.e. we wish to control the error rate at the test level and not observation level. Since only 0.1\% and 0\% of the observations in a given test are significant and the adjusted critical value is far greater than the largest test statistic we can conclude with reasonable certainty that additional control isn't required. 
 
 
 # Empirical Results
