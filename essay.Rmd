@@ -2435,10 +2435,16 @@ Even after taking into account the increased uncertainty of estimating individua
 
 # Detected Defiers 
 
-
+In a bid to reconcile such a large difference in test results I now turn to some simple direct comparisons between model results concerning defier identification. First, we consider defiers detected by honest causal forest followed by the saturated first stage - I use
+data from Angrist and Lavy as well as Autor, Dorn and Hanson since these papers predominantly condition on continous rather than discrete covariates.
 
 ## Maimonides' Defiers
 
+I plot instrument partial effects, from the saturated first stage, model on the $y$-axis against covariates on the $x$-axis; below this is a plot of heterogeneous treatment effects, estimated using honest causal forest, against covariates. Points in __black__ indicate defiers detected by __honest causal forest__.
+
+This exercise is useful for multiple reasons. Firstly, we can characterise common defier properties - for instance, the second plot suggests there are no defiers in schools with enrollment greater than 150, although admittedly there are few observations in this region. Overall, it seems that defiers are fairly evenly distributed across covariate values according to the honest causal forest.
+
+Secondly, we can compare those identified as defiers by the causal forest with results from the saturated first stage. Promisingly, defiers estimated by the honest causal forest aren't wildly different under the saturated first stage. That is, black points, the defiers, appear towards the lower end of the first plot with partial effects not far from 0.
 
 
 ```{r partial_maim_plot, comp_plot}
@@ -2498,7 +2504,13 @@ q
 
 
 
+Making any further comparisons between the plots above is difficult since they estimate essentially different features of the data. However, at first glance a big driver in test divergence appears to be non-linearity of the heterogeneous causal effects estimated. 
+
 ## Autor Dorn Hanson Defiers
+
+Moving onto Autor, Dorn and Hanson's first stage results we instead display defiers detected by the __saturated first stage__ in __purple__.
+
+There seems to be a larger disparity between model results in Autor, Dorn and Hanson's paper - some defiers detected by the saturated first stage have rather large, postive estimated heterogeneous treatment effects. In contrast to Angrist and Lavy's results there seems to be a systematic pattern to defiance and little evidence of non-linearity. For example, defiers seem concentrated in areas with a low share of industrial manufacturing and proportion of college educated between 30-50\%.
 
 ```{r partial_ADH_plot}
 
