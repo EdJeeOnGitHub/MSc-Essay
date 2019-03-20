@@ -739,6 +739,8 @@ sim_bin %>%
 
 ### Individual Heterogeneity
 
+
+Surprisingly the honest causal forest performs poorly in comparison to the saturated first stage test using a completely heterogeneous treatment effect independent of covariates. I'm reluctant to rationalise this behaviour post-hoc. Honest causal forest's behaviour in applied settings is less well understood than a conventional regression model using simple interaction terms but it's still fairly shocking that the predictive power of random forest, widely touted in machine learning competitions such as Kaggle, fails to improve on such a simple OLS model.
 ```{r hetero_sim_import}
 
 simulations_power_small <- read.csv("C:/Users/edjee/Dropbox/Ed/power_simulations_hetero_small.csv") %>% 
@@ -796,6 +798,8 @@ simulations_power_indiv %>%
 ```
 
 
+Similar to the subgroup heterogeneous simulations, $p$-values swiftly increase in significance as defier proportion increases although at a noticably slower rate than their less heterogeneous counterparts.
+
 ```{r power_indiv_sim_low_prop}
 simulations_power_indiv %>% 
   filter(pct_defiers_true > 0) %>% 
@@ -822,6 +826,9 @@ simulations_power_indiv %>%
 ```
 
 
+
+A common feature of the individual heterogeneity specification seems to be frequent over reporting of true defier figures - this could, in part, explain some of the discrepancies in test performance when we take the tests to the data since honest causal forest seems particularly prone to this issue.
+
 ```{r sim_power_indiv_N_N}
 simulations_power_indiv %>% 
   ggplot(aes(x = n_defiers_true,
@@ -839,6 +846,8 @@ simulations_power_indiv %>%
 
 ```
 
+
+Despite misgivings concerning honest causal forest's relative performance both tests, in absolute terms, still perform strongly with almost perfect identification at 10\% defier proportions. The apparent paradox between a noisier DGP and better test performance highlights why comparisons between tests across DGPs should be undertaken with caution. Power is a function of defier magnitude; defier proportion and the size of the error term but only defier proportion and error variance is held constant across specifications.
 
 ```{r power_prop}
 
@@ -874,6 +883,7 @@ sim_bin_indiv %>%
 
 ```
 
+Overall it seems both tests maintain reasonable levels of power under model mispecification issues although the honest causal forest suffers significantly more - again this in part, could help explain the observed divergence between the two tests later.
 
 ### Non-Linear Heterogeneity
 
