@@ -2559,16 +2559,18 @@ q
 
 # Conclusion
 
+In this essay I've presented two methods to detect defiers in datasets of interest to economists. Power simulations show that both tests are  powerful under a range of adverse data generating specifications and in the face of model misspecification, although both tests suffer to detect non-linear, heterogeneous defiance in smaller datasets. Additional control of test size is unnecessary and only serves to limit test power in both cases.
 
+ Simulations suggest both tests produce similar results but this isn't borne out in an empirical setting. One possible explanation is that Simpson's paradox is striking with a vengeance. Heterogeneous causal effects generated on aggregate at the observed subgroup level aren't representative of individual heterogeneous effects and the causal forest method is picking this up whereas the saturated first stage model isn't. However, I'm cautious of fully accepting the above interpretation - honest causal forest is a relatively new estimation strategy and its properties in real-world, applied settings still aren't well understood. Occam's razor would perhaps suggest that the first stage tests should be trusted most - without a doubt further exploration is required.
+ 
+ Furthermore, two of the datasets from labour economics considered are particularly small and graphing the heterogeneous effects suggest at least one of the datasets' first stage displays non-linear properties therefore test power may be low.
 
+ 
+ The evidence taking the tests to the data is decidedly inconclusive. On the one hand the honest causal forest based test detects defiers with a high degree of certainty and statistical signifance however this behaviour isn't replicated by the saturated first stage based test. It's hard to conclude with any reasonable degree of certainty if defiers are indeed present in the datasets in question without further research - particularly into divergences between the two tests which I fail to replicate through numerous simulations.
 
+ 
+ Throughout the essay I've tried to present visualisations as a convenient tool to assist labour economists in detecting the presence of defiers in their own datasets. Stata's `margins` command and R's port of the command in the `margins` package make the saturated first stage test particularly easy to implement.
 
-In this essay I've presented two methods to detect defiers in datasets of interest to economists. Power simulations suggest both tests give very similar results that aren't borne out in an empirical settings. One possibility is that there's significant confounding subgroup heterogeneity present in the datasets in question - a situation I don't explicitly model in the power simulations. Another explanation is that Simpson's paradox is striking with a vengeance. Heterogeneous causal effects generated on aggregate at the observed subgroup level aren't representative of individual heterogeneous effects and the causal forest method is picking this up whereas the saturated first stage model isn't.
-
-
-
-
-I'm cautious of accepting either interpretation above - honest causal forest is a relatively new estimation strategy and its properties in real-world, applied settings still aren't well understood. Occam's razor would perhaps suggest that the first stage tests should be trusted most - without a doubt further exploration is required. 
 
 # Appendix
 
