@@ -913,7 +913,7 @@ rm(simulations_power_small,
 
 
 
-
+Using the non-linear data generating process the magnitude of $p$-values has increased significantly i.e. $p$-values are much less small compared to the subgroup and individually heterogeneous cases. Now the smallest $p$-values are around $1 \times e^{-35}$ as opposed to $1 \times e^{-250}$ as seen above. Interestingly, the saturated first stage test seems to produce far smaller $p$-values at greater defier proportions than the honest causal forest. With enough data the honest causal forest enjoys a comparative advantage at picking up non-linearities at even the tiniest sign of defiance.
 
 ```{r sim_power_p_inverse}
 simulations_power_nl %>% 
@@ -944,7 +944,7 @@ simulations_power_nl %>%
 ```
 
 
-
+In an non-linear context it seems that saturated first stage struggles to detect defiance in small and moderately sized datasets whereas honest causal forest only struggles in the very smallest dataset.
 ```{r sim_power_low_nl}
 
 simulations_power_nl %>% 
@@ -975,6 +975,8 @@ simulations_power_nl %>%
 ```
 
 
+
+The overestimation of defiers exhibited by the individual heterogeneous effects has vanished and defier estimation seems to be consistent and well behaved throughout. Again, at first glance there's reassuring evidence that the models are accurately estimating the _number_, if not _identity_, of defiers in a dataset and test performance isn't driven by "tail defiance".
 ```{r simulations_power_N_N_nl}
 simulations_power_nl %>% 
   ggplot(aes(x = n_defiers_true,
@@ -993,6 +995,9 @@ simulations_power_nl %>%
 
 ```
 
+
+
+The simulation results suggest the non-linear specification causes the most issues for the tests with small N - this is particularly worrying considering two of the papers used later in the essay have roughly 1400 and 2000 datapoints each. However, at even moderate sized datasets both tests perform admirably. It's remarkable how well the saturated first stage test is able to infer defiance and non-linear heterogeneity even in a DGP with no explicit interaction terms. Again, the honest causal forest's comparative advantage appears to be large N, low defier situations.
 
 ```{r sim_power_nl}
 
@@ -1031,6 +1036,8 @@ sim_bin_nl %>%
                      labels = scales::percent_format(accuracy = 1))
 
 ```
+
+
 
 
 ## Size Simulations
@@ -1864,7 +1871,6 @@ first_stage_interactions_ADH_manu %>%
 
 ## Results
 
-eded
 
 ```{r res_fs}
 first_stage_results <- suppressWarnings(bind_rows(
@@ -1993,9 +1999,6 @@ Overall, it would seem that the saturated first stage test is unable to detect t
 
 # Honest Causal Forest Test
 
-
-Write up about methodology and simulation performance
-
 ## Angrist and Evans
 
 
@@ -2090,7 +2093,7 @@ tau_hat_results %>%
 
 The QQ plot of $p$-values in the 1990 sample almost perfectly fits the line of equality followed by movement above the line of equality at the 0.001th theoretical quantile. The causal forest method produces slightly different results for the 1980 sample. Here there's little evidence of the horizontal CDF we've grown to expect and limited evidence of defiers, in stark contrast to the 1990 sample.
 
-Such a large difference in results between tests and within tests between samples is puzzling and requires further investigation beyond the scope of this essay. 
+Such a large difference in results between tests and within tests between samples is puzzling particularly after the power simulations displayed such similar results under multiple data generating scenarios. Furthermore, Angrist and Evan's  use a census dataset with over 100,000 observations - whilst I don't conduct any simulations with this many observations - it's hard to rationalise such a large departure in test results.     
 ```{r}
 tau_hat_results %>% 
   ggplot(aes(sample = pval, colour = dataset)) +
@@ -2428,9 +2431,11 @@ rm(temp_df)
 ```
 
 
-Even after taking into account the increased uncertainty of estimating individual causal effects the monotonicity test is roundly failed in all 4 so-called "defiant" datasets. 
+Even after taking into account the increased uncertainty of estimating individual causal effects the monotonicity test is roundly failed in all 4 "defiant" datasets and worryingly high number of defiers are estimated. 
 
 # Detected Defiers 
+
+
 
 ## Maimonides' Defiers
 
