@@ -1260,10 +1260,11 @@ if (run_sim){
   
   
   plan(sequential)
-  write.csv("C:/Users/edjee/Dropbox/Ed/romano_wolf_rf.csv",
-            row.names = FALSE)
+  # write.csv(model_boot_rf, "C:/Users/edjee/Dropbox/Ed/romano_wolf_rf.csv",
+  #           row.names = FALSE)
 } else {
-  model_boot_rf <- readr::read_csv("C:/Users/edjee/Dropbox/Ed/romano_wolf_rf.csv")
+  model_boot_rf <- readr::read_csv("C:/Users/edjee/Dropbox/Ed/romano_wolf_rf.csv") %>% 
+    as.matrix()
 }
 
 adjusted_val_rf <- FWERkControl(test_stat = positive_sim_model_rf$t_stat,
