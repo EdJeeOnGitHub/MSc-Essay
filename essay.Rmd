@@ -2855,7 +2855,7 @@ rm(SEs_IV_4,
 ```
 
 ```{r save_image}
-save.image("cached_run.RData")
+save.image("C:/Users/edjee/Dropbox/Ed/cached_run.RData")
 ```
 
 # References
