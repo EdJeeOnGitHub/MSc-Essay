@@ -64,8 +64,8 @@ library(gt)
 library(haven)
 library(broom)
 library(grf)
-library(patchwork)
-
+library(StepwiseTest)
+library(modelr)
 
 ```
 
@@ -1139,29 +1139,35 @@ simulations_size %>%
 ```
 
 
-size checks table here.
+Simulation results clearly show test size $\leq \alpha$ without any additional control procedures. Next, I provide further evidence that a Romano-Wolf adjustment would be too conservative.
 ```{r checks_size, results = "asis"}
 simulations_size %>% 
+  rename(Model = model) %>% 
+  group_by(Model) %>% 
   filter(pval_defier < 0.05) %>% 
-  summarise(n = nrow(.),
-            proportion = n / nrow(simulations_size),
-            N_defiers = sum(ifelse(pct_defiers_true > 0, 1, 0))) %>% 
-  gt()
+  summarise("Number of Test Draws" = nrow(simulations_size)/2,
+            "Number of Significant Tests" = n(),
+            "Proportion Significant" = `Number of Significant Tests` / `Number of Test Draws`,
+            "Alpha" = 0.05) %>% 
+  gt() %>% 
+  fmt_percent(
+    columns = c("Proportion Significant",
+                "Alpha")
+  ) %>% 
+  tab_header(
+    title = "Size Simulations"
+  )
 
 ```
 
 
-#### Romano-Wolf
+### Romano-Wolf
 
-It's difficult to implement Romano and Wolf's resampling multiple adjustment procedure with one-sided tests in R - instead I offer suggestive evidence that the procedure is too conservative when considering data generated under a two-sided null hypothesis. Full proof via simulation would require simulating $N$ datasets and resampling each dataset $n$ times to form Romano-Wolf adjusted critical values which is omitted in this essay for computational reasons.
-
-
+It's difficult to implement Romano and Wolf's resampling multiple adjustment procedure with one-sided tests in R - instead I offer suggestive evidence that the procedure is too conservative when considering one draw of the data generated under a two-sided null hypothesis. Full proof via simulation would require simulating $N$ datasets and resampling each dataset $n$ times to form Romano-Wolf adjusted critical values which is omitted in this essay for computational reasons.
 
 
-```{r}
-library(StepwiseTest)
-library(modelr)
-library(furrr)
+```{r romano_wolf_sims}
+
 positive_sim_data <- create_fake_data(N = 1000,
                  model_betas = rep(0, 10),
                  force_positive = TRUE)
@@ -1189,7 +1195,7 @@ model_boot <- 1:500 %>%
   future_map_dfc(.,
                  anon_function,
                  data = positive_sim_data,
-                 .progress = TRUE,
+                 .progress = FALSE,
                  .options = future_options(
                    globals = c("positive_sim_data",
                                "run_first_stage_interactions_fast",
