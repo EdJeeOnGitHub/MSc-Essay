@@ -89,8 +89,7 @@ sim_first_stage_forest <- function(dataset){
     as.matrix() %>% 
     causal_forest(X = .,
                   Y = dataset$D,
-                  W = dataset$Z,
-                  num.trees = 4000) %>% 
+                  W = dataset$Z) %>% 
     predict(., estimate.variance = TRUE) %>% 
     as_tibble() %>% 
     mutate(sigma_hat = sqrt(variance.estimates),
@@ -112,7 +111,7 @@ coefs_positive <- runif(10, 0, 1)
 create_fake_data <- function(N, model_betas, force_positive = FALSE){
   mu <- rep(0, 4)
   
-  A <- matrix(runif(4^2)*3-1, ncol=4) 
+  A <- matrix(runif(4^2)*2-1, ncol=4) 
   Sigma <- t(A) %*% A
   
   if (force_positive == TRUE){
@@ -263,10 +262,6 @@ power_test <- function(coefs, sim_data){
   first_stage_model$true_dydx <- true_dydx[,1]
   forest_model <- sim_first_stage_forest(sim_data)
   
-  
-  
-  
-  
   forest_full_wide <- left_join(forest_model,
                                 first_stage_model %>% 
                                   select_at(vars(row_id,
@@ -320,7 +315,7 @@ coef_list <- lapply(seq_len(nrow(coef_matrix)), function(i) coef_matrix[i,]*fact
 
 
 simulation_func <- function(x, force_positive = FALSE){
-  sim_data <- create_fake_data(N = 1000,
+  sim_data <- create_fake_data(N = 10000,
                                model_betas = x,
                                force_positive = force_positive)
   
@@ -352,7 +347,6 @@ simulation_func <- function(x, force_positive = FALSE){
                                 pval_one_pos))
   return(power_sim_df)
 }
-
 
 run_sim <- FALSE
 
@@ -465,7 +459,7 @@ sim_bin_summ <- simulations_power %>%
 
 
 
-sim_bin_summ %>% 
+p <- sim_bin_summ %>% 
   na.omit() %>% 
   ggplot(aes(x = gr, y = pct_rejected, colour = model, group = model)) +
   geom_point(aes(size = n)) + 
@@ -474,6 +468,19 @@ sim_bin_summ %>%
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
   guides(size = "none") 
+p
+library(plotly)
+
+
+p <- sim_bin_summ %>% 
+  ggplot(aes(x = gr, y = pct_rejected, colour = model, group = model)) +
+  geom_line() + 
+  geom_point() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  guides(size = "none") 
+ggplotly(p)
 
 
 
@@ -553,6 +560,14 @@ simulations_size %>%
   facet_wrap(~model)
 
 
+simulations_size %>% 
+  filter(pval_defier < 0.05) %>% 
+  summarise(n = nrow(.),
+            proportion = n / nrow(simulations_size))
+
+simulations_size %>% 
+  filter(pct_defiers_true > 0) %>% 
+  nrow()
 
 ##### MISC ####
 
