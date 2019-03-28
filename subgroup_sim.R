@@ -258,7 +258,7 @@ if (run_sim) {
   plan(sequential)
   write.csv(simulations_size_subgroup_small, file = "simulations/size/simulations_size_subgroup_small.csv", row.names = FALSE)
 } else {
-  simulations_size_subgroup_small <- readr::read_csv("simulations_size_subgroup_small.csv")
+  simulations_size_subgroup_small <- readr::read_csv("simulations/size/simulations_size_subgroup_small.csv")
 }
 
 
@@ -292,7 +292,7 @@ if (run_sim) {
   plan(sequential)
   write.csv(simulations_size_subgroup_medium, file = "simulations/size/simulations_size_subgroup_medium.csv", row.names = FALSE)
 } else {
-  simulations_size_subgroup_medium <- readr::read_csv("simulations_size_subgroup_medium.csv")
+  simulations_size_subgroup_medium <- readr::read_csv("simulations/size/simulations_size_subgroup_medium.csv")
 }
 
 # Large
@@ -325,7 +325,7 @@ if (run_sim) {
   plan(sequential)
   write.csv(simulations_size_subgroup_large, file = "simulations/size/simulations_size_subgroup_large.csv", row.names = FALSE)
 } else {
-  simulations_size_subgroup_large <- readr::read_csv("simulations_size_subgroup_large.csv")
+  simulations_size_subgroup_large <- readr::read_csv("simulations/size/simulations_size_subgroup_large.csv")
 }
 
 
