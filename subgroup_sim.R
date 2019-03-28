@@ -18,8 +18,7 @@ create_fake_data <- function(N, model_betas, force_positive = FALSE){
   if (force_positive == TRUE){
     X_data <- abs(MASS::mvrnorm(n = N, mu = mu, Sigma = Sigma)) %>% 
       as_tibble() %>% 
-      mutate(Z = rbinom(n = N, 1, 0.5),
-             V4 = ifelse(V4 > 0.5, 1, 0))
+      mutate(Z = rbinom(n = N, 1, 0.5))
   } else {
     X_data <- MASS::mvrnorm(n = N, mu = mu, Sigma = Sigma) %>% 
       as_tibble() %>% 
@@ -87,7 +86,7 @@ power_test <- function(coefs, sim_data){
   return(models_df_long)
 }
 
-coef_matrix <- matrix(runif(5000*10, -1, 1), 5000, 10)
+coef_matrix <- matrix(runif(2000*10, -1, 1), 2000, 10)
 coef_matrix_df <- coef_matrix %>% 
   as_tibble()
 factor_pos <- ifelse(rowMeans(coef_matrix) < 0, -1, 1) 
@@ -141,8 +140,7 @@ if (run_sim) {
   simulations_power_subgroup_small <- coef_list %>% 
     future_map_dfr(simulation_func,
                    N = 1000,
-                   .options = future_options(globals = c("sim_data",
-                                                         "run_first_stage_interactions_fast",
+                   .options = future_options(globals = c("run_first_stage_interactions_fast",
                                                          "find_SEs",
                                                          "create_fake_data",
                                                          "simulation_func",
@@ -172,7 +170,7 @@ if (run_sim) {
   simulations_power_subgroup_medium <- coef_list %>% 
     future_map_dfr(simulation_func,
                    N = 5000,
-                   .options = future_options(globals = c("sim_data",
+                   .options = future_options(globals = c(
                                                          "run_first_stage_interactions_fast",
                                                          "find_SEs",
                                                          "create_fake_data",
@@ -199,11 +197,11 @@ run_sim <- FALSE
 if (run_sim) {
   library(furrr)
   plan(multisession)
-  
-  simulations_power_subgroup_large <- coef_list %>% 
+
+  simulations_power_subgroup_large <- coef_list %>%
     future_map_dfr(simulation_func,
                    N = 10000,
-                   .options = future_options(globals = c("sim_data",
+                   .options = future_options(globals = c(
                                                          "run_first_stage_interactions_fast",
                                                          "find_SEs",
                                                          "create_fake_data",
@@ -214,120 +212,16 @@ if (run_sim) {
                                                           "margins",
                                                           "broom",
                                                           "grf")),
-                   .progress = TRUE) %>% 
+                   .progress = TRUE) %>%
     mutate(N = "Large")
-  
-  
-  
+
+
+
   plan(sequential)
   write.csv(simulations_power_subgroup_large, file = "simulations/power/simulations_power_subgroup_large.csv", row.names = FALSE)
 } else {
   simulations_power_subgroup_large <- readr::read_csv("simulations/power/simulations_power_subgroup_large.csv")
 }
-
-##### Test Size Simulations ####
-
-
-# Small
-run_sim <- FALSE
-if (run_sim) {
-  library(furrr)
-  plan(multisession)
-  
-  simulations_size_subgroup_small <- coef_list %>% 
-    map(abs) %>% 
-    future_map_dfr(simulation_func,
-                   N = 1000,
-                   force_positive = TRUE,
-                   .options = future_options(globals = c("sim_data",
-                                                         "run_first_stage_interactions_fast",
-                                                         "find_SEs",
-                                                         "create_fake_data",
-                                                         "simulation_func",
-                                                         "power_test",
-                                                         "sim_first_stage_forest"),
-                                             packages = c("dplyr",
-                                                          "margins",
-                                                          "broom",
-                                                          "grf")),
-                   .progress = TRUE) %>% 
-    mutate(N = "Small")
-  
-  
-  
-  plan(sequential)
-  write.csv(simulations_size_subgroup_small, file = "simulations/size/simulations_size_subgroup_small.csv", row.names = FALSE)
-} else {
-  simulations_size_subgroup_small <- readr::read_csv("simulations/size/simulations_size_subgroup_small.csv")
-}
-
-
-# Medium
-run_sim <- FALSE
-if (run_sim) {
-  library(furrr)
-  plan(multisession)
-  
-  simulations_size_subgroup_medium <- coef_list %>% 
-    map(abs) %>% 
-    future_map_dfr(simulation_func,
-                   N = 5000,
-                   force_positive = TRUE,
-                   .options = future_options(globals = c("sim_data",
-                                                         "run_first_stage_interactions_fast",
-                                                         "find_SEs",
-                                                         "create_fake_data",
-                                                         "simulation_func",
-                                                         "power_test",
-                                                         "sim_first_stage_forest"),
-                                             packages = c("dplyr",
-                                                          "margins",
-                                                          "broom",
-                                                          "grf")),
-                   .progress = TRUE) %>% 
-    mutate(N = "Medium")
-  
-  
-  
-  plan(sequential)
-  write.csv(simulations_size_subgroup_medium, file = "simulations/size/simulations_size_subgroup_medium.csv", row.names = FALSE)
-} else {
-  simulations_size_subgroup_medium <- readr::read_csv("simulations/size/simulations_size_subgroup_medium.csv")
-}
-
-# Large
-run_sim <- FALSE
-if (run_sim) {
-  library(furrr)
-  plan(multisession)
-  
-  simulations_size_subgroup_large <- coef_list %>% 
-    map(abs) %>% 
-    future_map_dfr(simulation_func,
-                   N = 10000,
-                   force_positive = TRUE,
-                   .options = future_options(globals = c("sim_data",
-                                                         "run_first_stage_interactions_fast",
-                                                         "find_SEs",
-                                                         "create_fake_data",
-                                                         "simulation_func",
-                                                         "power_test",
-                                                         "sim_first_stage_forest"),
-                                             packages = c("dplyr",
-                                                          "margins",
-                                                          "broom",
-                                                          "grf")),
-                   .progress = TRUE) %>% 
-    mutate(N = "Large")
-  
-  
-  
-  plan(sequential)
-  write.csv(simulations_size_subgroup_large, file = "simulations/size/simulations_size_subgroup_large.csv", row.names = FALSE)
-} else {
-  simulations_size_subgroup_large <- readr::read_csv("simulations/size/simulations_size_subgroup_large.csv")
-}
-
 
 rm(
   coef_list,
