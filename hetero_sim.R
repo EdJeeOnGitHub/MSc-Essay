@@ -101,7 +101,7 @@ hetero_simul_func <- function(N){
                                       "Z") %>% 
     mutate(row_id = row_number(),
            pval_one_pos = pnorm(-t_stat),
-           model = "saturated first stage",
+           model = "Saturated First Stage",
            true_dydx = true_dydx,
            first_stage_sign = first_stage_sign)
   
@@ -122,7 +122,7 @@ hetero_simul_func <- function(N){
            "dydx_hi" = prediction_hi) %>% 
     select(-variance.estimates,
            -debiased.error) %>% 
-    mutate(model = "forest")
+    mutate(model = "Forest")
   
   models_df_long <- suppressWarnings(bind_rows(saturated_first_stage %>% 
                                                  select(-pval_holm),
@@ -165,14 +165,14 @@ anon_sim_func <- function(dummy_arg, N){
 
 ### Running sims
 
-
-run_sim <- TRUE
+# Small
+run_sim <- FALSE
 
 if (run_sim) {
   library(furrr)
   plan(multisession)
   
-  simulations_power_hetero <- 1:2000 %>% 
+  simulations_power_hetero_small <- 1:2000 %>% 
     future_map_dfr(anon_sim_func,
                    N = 1000,
                    .options = future_options(globals = c("sim_first_stage_forest",
@@ -186,25 +186,26 @@ if (run_sim) {
                                              packages = c("dplyr",
                                                           "margins",
                                                           "grf")),
-                   .progress = TRUE)
+                   .progress = TRUE) %>% 
+    mutate(N = "Small")
   
   
   
   plan(sequential)
-  write.csv(simulations_power_hetero, file = "C:/Users/ed/Dropbox/Ed/power_simulations_hetero_small.csv", row.names = FALSE)
+  write.csv(simulations_power_hetero_small, file = "simulations/power/simulations_power_hetero_small.csv", row.names = FALSE)
 } else {
-  simulations_power_hetero <- readr::read_csv("power_simulations_hetero_small.csv")
+  simulations_power_hetero_small <- readr::read_csv("simulations/power/simulations_power_hetero_small.csv")
 }
 
 
-
-run_sim <- TRUE
+# Medium
+run_sim <- FALSE
 
 if (run_sim) {
   library(furrr)
   plan(multisession)
   
-  simulations_power_hetero <- 1:2000 %>% 
+  simulations_power_hetero_medium <- 1:2000 %>% 
     future_map_dfr(anon_sim_func,
                    N = 5000,
                    .options = future_options(globals = c("sim_first_stage_forest",
@@ -218,24 +219,26 @@ if (run_sim) {
                                              packages = c("dplyr",
                                                           "margins",
                                                           "grf")),
-                   .progress = TRUE)
+                   .progress = TRUE) %>% 
+    mutate(N = "Medium")
   
   
   
   plan(sequential)
-  write.csv(simulations_power_hetero, file = "C:/Users/ed/Dropbox/Ed/power_simulations_hetero_medium.csv", row.names = FALSE)
+  write.csv(simulations_power_hetero_medium, file = "simulations/power/simulations_power_hetero_medium.csv", row.names = FALSE)
 } else {
-  simulations_power_hetero <- readr::read_csv("power_simulations_hetero_small.csv")
+  simulations_power_hetero_medium <- readr::read_csv("simulations/power/simulations_power_hetero_small.csv")
 }
 
 
+# Large
 run_sim <- TRUE
 
 if (run_sim) {
   library(furrr)
   plan(multisession)
   
-  simulations_power_hetero <- 1:2000 %>% 
+  simulations_power_hetero_large <- 1:2000 %>% 
     future_map_dfr(anon_sim_func,
                    N = 10000,
                    .options = future_options(globals = c("sim_first_stage_forest",
@@ -249,15 +252,25 @@ if (run_sim) {
                                              packages = c("dplyr",
                                                           "margins",
                                                           "grf")),
-                   .progress = TRUE)
+                   .progress = TRUE) %>% 
+    mutate(N = "Large")
   
   
   
   plan(sequential)
-  write.csv(simulations_power_hetero, file = "C:/Users/ed/Dropbox/Ed/power_simulations_hetero_large.csv", row.names = FALSE)
+  write.csv(simulations_power_hetero_large, file = "simulations/power/simulations_power_hetero_large.csv", row.names = FALSE)
 } else {
-  simulations_power_hetero <- readr::read_csv("power_simulations_hetero_small.csv")
+  simulations_power_hetero_large <- readr::read_csv("simulations/power/simulations_power_hetero_large.csv")
 }
 
 
 
+rm(
+  run_sim,
+  anon_sim_func,
+  create_fake_heterogeneous_data,
+  create_hetero_coefs,
+  extract_hetero_draw_stats,
+  find_true_dydx,
+  hetero_simul_func
+)
