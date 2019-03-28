@@ -8,7 +8,7 @@ library(furrr)
 set.seed(1234)
 ## create the X data according to thingy so can tell true defiers.
 create_fake_non_linear_data <- function(N,
-                                           force_positive = FALSE){
+                                        force_positive = FALSE){
   ## X covariate means and variances for MV normal
   mu <- rep(1, 4)
   A <- matrix(runif(4^2)*2-1, ncol = 4)
