@@ -232,7 +232,7 @@ if (run_sim) {
 
 
 # Large
-run_sim <- TRUE
+run_sim <- FALSE
 
 if (run_sim) {
   library(furrr)
