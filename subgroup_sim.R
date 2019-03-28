@@ -48,7 +48,7 @@ power_test <- function(coefs, sim_data){
                                       "Z") %>% 
     mutate(row_id = row_number(),
            pval_one_pos = pnorm(-t_stat),
-           model = "saturated first stage")
+           model = "Saturated First Stage")
   
   interaction_coefs <- c(coefs[2],
                          coefs[7:10])
@@ -78,7 +78,7 @@ power_test <- function(coefs, sim_data){
            "dydx_hi" = prediction_hi) %>% 
     select(-variance.estimates,
            -debiased.error) %>% 
-    mutate(model = "forest")
+    mutate(model = "Forest")
   
   models_df_long <- suppressWarnings(bind_rows(first_stage_model %>% 
                                                  select(-pval_holm),
@@ -95,8 +95,8 @@ factor_pos <- ifelse(rowMeans(coef_matrix) < 0, -1, 1)
 coef_list <- lapply(seq_len(nrow(coef_matrix)), function(i) coef_matrix[i,]*factor_pos[i])
 
 
-simulation_func <- function(x, force_positive = FALSE){
-  sim_data <- create_fake_data(N = 10000,
+simulation_func <- function(x, N, force_positive = FALSE){
+  sim_data <- create_fake_data(N = N,
                                model_betas = x,
                                force_positive = force_positive)
   
@@ -131,14 +131,16 @@ simulation_func <- function(x, force_positive = FALSE){
 
 
 ##### Actual Running of Simulations
-run_sim <- FALSE
 
+# Small
+run_sim <- FALSE
 if (run_sim) {
   library(furrr)
   plan(multisession)
   
-  simulations_power <- coef_list %>% 
+  simulations_power_subgroup_small <- coef_list %>% 
     future_map_dfr(simulation_func,
+                   N = 1000,
                    .options = future_options(globals = c("sim_data",
                                                          "run_first_stage_interactions_fast",
                                                          "find_SEs",
@@ -150,30 +152,92 @@ if (run_sim) {
                                                           "margins",
                                                           "broom",
                                                           "grf")),
-                   .progress = TRUE)
+                   .progress = TRUE) %>% 
+    mutate(N = "Small")
   
   
   
   plan(sequential)
-  # write.csv(simulations_power, file = "power_simulations.csv", row.names = FALSE)
-  # write.csv(simulations_power, file = "power_simulations_both.csv", row.names = FALSE)  
+  write.csv(simulations_power_subgroup_small, file = "simulations/power/simulations_power_subgroup_small.csv", row.names = FALSE)
 } else {
-  simulations_power <- readr::read_csv("power_simulations_both.csv")
+  simulations_power_subgroup_small <- readr::read_csv("simulations/power/simulations_power_subgroup_small.csv")
 }
 
-
-##### Test Size Simulations ####
-## DO this after while loops done.
-
-
+# Medium
 run_sim <- FALSE
 if (run_sim) {
   library(furrr)
   plan(multisession)
   
-  simulations_size <- coef_list %>% 
+  simulations_power_subgroup_medium <- coef_list %>% 
+    future_map_dfr(simulation_func,
+                   N = 5000,
+                   .options = future_options(globals = c("sim_data",
+                                                         "run_first_stage_interactions_fast",
+                                                         "find_SEs",
+                                                         "create_fake_data",
+                                                         "simulation_func",
+                                                         "power_test",
+                                                         "sim_first_stage_forest"),
+                                             packages = c("dplyr",
+                                                          "margins",
+                                                          "broom",
+                                                          "grf")),
+                   .progress = TRUE) %>% 
+    mutate(N = "Medium")
+  
+  
+  
+  plan(sequential)
+  write.csv(simulations_power_subgroup_medium, file = "simulations/power/simulations_power_subgroup_medium.csv", row.names = FALSE)
+} else {
+  simulations_power_subgroup_medium <- readr::read_csv("simulations/power/simulations_power_subgroup_medium.csv")
+}
+
+# Large
+run_sim <- FALSE
+if (run_sim) {
+  library(furrr)
+  plan(multisession)
+  
+  simulations_power_subgroup_large <- coef_list %>% 
+    future_map_dfr(simulation_func,
+                   N = 10000,
+                   .options = future_options(globals = c("sim_data",
+                                                         "run_first_stage_interactions_fast",
+                                                         "find_SEs",
+                                                         "create_fake_data",
+                                                         "simulation_func",
+                                                         "power_test",
+                                                         "sim_first_stage_forest"),
+                                             packages = c("dplyr",
+                                                          "margins",
+                                                          "broom",
+                                                          "grf")),
+                   .progress = TRUE) %>% 
+    mutate(N = "Large")
+  
+  
+  
+  plan(sequential)
+  write.csv(simulations_power_subgroup_large, file = "simulations/power/simulations_power_subgroup_large.csv", row.names = FALSE)
+} else {
+  simulations_power_subgroup_large <- readr::read_csv("simulations/power/simulations_power_subgroup_large.csv")
+}
+
+##### Test Size Simulations ####
+
+
+# Small
+run_sim <- FALSE
+if (run_sim) {
+  library(furrr)
+  plan(multisession)
+  
+  simulations_size_subgroup_small <- coef_list %>% 
     map(abs) %>% 
     future_map_dfr(simulation_func,
+                   N = 1000,
                    force_positive = TRUE,
                    .options = future_options(globals = c("sim_data",
                                                          "run_first_stage_interactions_fast",
@@ -183,17 +247,96 @@ if (run_sim) {
                                                          "power_test",
                                                          "sim_first_stage_forest"),
                                              packages = c("dplyr",
-                                                          "modelr",
                                                           "margins",
                                                           "broom",
                                                           "grf")),
-                   .progress = TRUE)
+                   .progress = TRUE) %>% 
+    mutate(N = "Small")
   
   
   
   plan(sequential)
-  write.csv(simulations_size, file = "size_simulations_both.csv", row.names = FALSE)
-  # write.csv(simulations_size, file = "size_simulations_both.csv", row.names = FALSE)  
+  write.csv(simulations_size_subgroup_small, file = "simulations/size/simulations_size_subgroup_small.csv", row.names = FALSE)
 } else {
-  simulations_size <- readr::read_csv("size_simulations_both.csv")
+  simulations_size_subgroup_small <- readr::read_csv("simulations_size_subgroup_small.csv")
 }
+
+
+# Medium
+run_sim <- FALSE
+if (run_sim) {
+  library(furrr)
+  plan(multisession)
+  
+  simulations_size_subgroup_medium <- coef_list %>% 
+    map(abs) %>% 
+    future_map_dfr(simulation_func,
+                   N = 5000,
+                   force_positive = TRUE,
+                   .options = future_options(globals = c("sim_data",
+                                                         "run_first_stage_interactions_fast",
+                                                         "find_SEs",
+                                                         "create_fake_data",
+                                                         "simulation_func",
+                                                         "power_test",
+                                                         "sim_first_stage_forest"),
+                                             packages = c("dplyr",
+                                                          "margins",
+                                                          "broom",
+                                                          "grf")),
+                   .progress = TRUE) %>% 
+    mutate(N = "Medium")
+  
+  
+  
+  plan(sequential)
+  write.csv(simulations_size_subgroup_medium, file = "simulations/size/simulations_size_subgroup_medium.csv", row.names = FALSE)
+} else {
+  simulations_size_subgroup_medium <- readr::read_csv("simulations_size_subgroup_medium.csv")
+}
+
+# Large
+run_sim <- FALSE
+if (run_sim) {
+  library(furrr)
+  plan(multisession)
+  
+  simulations_size_subgroup_large <- coef_list %>% 
+    map(abs) %>% 
+    future_map_dfr(simulation_func,
+                   N = 10000,
+                   force_positive = TRUE,
+                   .options = future_options(globals = c("sim_data",
+                                                         "run_first_stage_interactions_fast",
+                                                         "find_SEs",
+                                                         "create_fake_data",
+                                                         "simulation_func",
+                                                         "power_test",
+                                                         "sim_first_stage_forest"),
+                                             packages = c("dplyr",
+                                                          "margins",
+                                                          "broom",
+                                                          "grf")),
+                   .progress = TRUE) %>% 
+    mutate(N = "Large")
+  
+  
+  
+  plan(sequential)
+  write.csv(simulations_size_subgroup_large, file = "simulations/size/simulations_size_subgroup_large.csv", row.names = FALSE)
+} else {
+  simulations_size_subgroup_large <- readr::read_csv("simulations_size_subgroup_large.csv")
+}
+
+
+rm(
+  coef_list,
+  coef_matrix,
+  coef_matrix_df,
+  factor_pos,
+  run_sim,
+  create_fake_data,
+  power_test,
+  simulation_func
+)
+
