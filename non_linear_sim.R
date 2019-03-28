@@ -48,20 +48,6 @@ create_fake_non_linear_data <- function(N,
               beta_Zi3 = 0*pmax(`Z:V3`, 0),
               beta_Zi4 = 0*`Z:V4`*rnorm(1)) 
 
-    
-    
-    # transmute(beta_intercept = rnorm(1),
-    #           beta_Z = pmax(V1, 0)^2,
-    #           beta_1 = rnorm(1),
-    #           beta_2 = pmin(V2, 0),
-    #           beta_3 = pmax(V3, 1)*0.5,
-    #           beta_4 = V4*0.2,
-    #           beta_Zi1 = `Z:V1`^3*rnorm(1),
-    #           beta_Zi2 = abs(`Z:V2`)*rnorm(1),
-    #           beta_Zi3 = pmax(`Z:V3`, 0),
-    #           beta_Zi4 = `Z:V4`*rnorm(1)) 
-  
-  
   D <- diag(X_data_interactions %*% t(as.matrix(partial_effects)))
   
   sim_data <- X_data_interactions %>% 
@@ -100,7 +86,7 @@ non_linear_simul_func <- function(N){
                                       "Z") %>% 
     mutate(row_id = row_number(),
            pval_one_pos = pnorm(-t_stat),
-           model = "saturated first stage",
+           model = "Saturated First Stage",
            true_dydx = true_dydx,
            first_stage_sign = first_stage_sign)
   
@@ -121,7 +107,7 @@ non_linear_simul_func <- function(N){
            "dydx_hi" = prediction_hi) %>% 
     select(-variance.estimates,
            -debiased.error) %>% 
-    mutate(model = "forest")
+    mutate(model = "Forest")
   
   models_df_long <- suppressWarnings(bind_rows(saturated_first_stage %>% 
                                                  select(-pval_holm),
@@ -163,17 +149,16 @@ anon_sim_func <- function(dummy_arg, N){
 }
 
 
-anon_sim_func(100, 1000)
 ### Running sims
 
 
-run_sim <- TRUE
-
+# Small
+run_sim <- FALSE
 if (run_sim) {
   library(furrr)
   plan(multisession)
   # small
-  simulations_power_non_linear <- 1:2000 %>% 
+  simulations_power_non_linear_small <- 1:2000 %>% 
     future_map_dfr(anon_sim_func,
                    N = 1000,
                    .options = future_options(globals = c("sim_first_stage_forest",
@@ -185,22 +170,25 @@ if (run_sim) {
                                              packages = c("dplyr",
                                                           "margins",
                                                           "grf")),
-                   .progress = TRUE)
+                   .progress = TRUE) %>% 
+    mutate(N = "Small")
   
   
   
   plan(sequential)
-  write.csv(simulations_power_non_linear, file = "C:/Users/ed/Dropbox/Ed/power_simulations_non_linear_small.csv", row.names = FALSE)
-} 
+  write.csv(simulations_power_non_linear_small, file = "simulations/power/simulations_power_non_linear_small.csv", row.names = FALSE)
+} else {
+  simulations_power_non_linear_small <- readr::read_csv("simulations/power/simulations_power_non_linear_small.csv")
+}
 
-
-run_sim <- TRUE
+# Medium
+run_sim <- FALSE
 
 if (run_sim) {
   library(furrr)
   plan(multisession)
   # medium
-  simulations_power_non_linear <- 1:2000 %>% 
+  simulations_power_non_linear_medium <- 1:2000 %>% 
     future_map_dfr(anon_sim_func,
                    N = 5000,
                    .options = future_options(globals = c("sim_first_stage_forest",
@@ -212,23 +200,26 @@ if (run_sim) {
                                              packages = c("dplyr",
                                                           "margins",
                                                           "grf")),
-                   .progress = TRUE)
+                   .progress = TRUE) %>% 
+    mutate(N = "Medium")
   
   
   
   plan(sequential)
-  write.csv(simulations_power_non_linear, file = "C:/Users/ed/Dropbox/Ed/power_simulations_non_linear_medium.csv", row.names = FALSE)
+  write.csv(simulations_power_non_linear_medium, file = "simulations/power/simulations_power_non_linear_medium.csv", row.names = FALSE)
+} else {
+  simulations_power_non_linear_medium <- readr::read_csv("simulations/power/simulations_power_non_linear_medium.csv")
 } 
 
 
 
-run_sim <- TRUE
-
+# Large
+run_sim <- FALSE
 if (run_sim) {
   library(furrr)
   plan(multisession)
   # large
-  simulations_power_non_linear <- 1:2000 %>% 
+  simulations_power_non_linear_large <- 1:2000 %>% 
     future_map_dfr(anon_sim_func,
                    N = 10000,
                    .options = future_options(globals = c("sim_first_stage_forest",
@@ -240,10 +231,22 @@ if (run_sim) {
                                              packages = c("dplyr",
                                                           "margins",
                                                           "grf")),
-                   .progress = TRUE)
+                   .progress = TRUE) %>% 
+    mutate(N = "Large")
   
   
   
   plan(sequential)
-  write.csv(simulations_power_non_linear, file = "C:/Users/ed/Dropbox/Ed/power_simulations_non_linear_large.csv", row.names = FALSE)
-} 
+  write.csv(simulations_power_non_linear_large, file = "simulations/power/simulations_power_non_linear_large.csv", row.names = FALSE)
+} else {
+  simulations_power_non_linear_large <- readr::read_csv("simulations/power/simulations_power_non_linear_large.csv")
+}
+
+
+rm(
+  run_sim,
+  anon_sim_func,
+  create_fake_non_linear_data,
+  extract_draw_stats,
+  non_linear_simul_func
+)
