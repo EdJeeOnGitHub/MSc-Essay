@@ -7,6 +7,7 @@ library(broom)
 library(purrr)
 library(grf)
 library(tidyr)
+set.seed(1234)
 ##### Fake Data Generation #####
 
 
