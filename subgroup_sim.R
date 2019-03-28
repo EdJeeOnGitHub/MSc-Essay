@@ -6,6 +6,7 @@ library(ggplot2)
 library(broom)
 library(purrr)
 library(grf)
+library(tidyr)
 ##### Functions  First Stage ####
 
 find_SEs <- function(model_data_no_y, model_vcov, instrument){
@@ -133,107 +134,8 @@ create_fake_data <- function(N, model_betas, force_positive = FALSE){
     mutate(D = D[, 1] + rnorm(N)*5)
   return(sim_data)
 }
-sim_dataset <- create_fake_data(1000, coefs_positive)
-
-
-##### Running models #####
-
-
-sim_positive_ols <- lm(D ~ ., data = sim_dataset) %>% 
-  tidy() %>% 
-  mutate(true_beta = coefs_positive)
-sim_positive_ols
-
-
-sim_positive <- sim_dataset %>% 
-  select_at(vars(-contains(":"), -`(Intercept)`)) %>% 
-  run_first_stage_interactions_fast(.,
-                                    dependent_variable = "D",
-                                    instrument = "Z") %>% 
-  mutate(pval_twosided = 2*pnorm(-abs(t_stat)))
-
-p_adj <- p.adjust(sim_positive$pval_twosided, method = "holm")
-
-sim_positive$p_2_adjust <- p_adj
-
-
-library(tidyr)
-
-
-sim_positive %>% 
-  select(p_2_adjust, pval_twosided)
-
-##### Romano Wolf ####
-# library(StepwiseTest)
-# library(modelr)
-# library(furrr)
-# plan(multisession)
-# 
-# anon_function <- function(dummy_arg,data){
-#   data %>% 
-#     select_at(vars(-contains(":"), -`(Intercept)`)) %>% 
-#     resample_bootstrap() %>% 
-#     as.data.frame() %>% 
-#     run_first_stage_interactions_fast(.,
-#                                       dependent_variable = "D",
-#                                       instrument = "Z") %>% 
-#     select(t_stat) %>% 
-#     pull()
-# }
-# 
-# model_boot <- 1:1000 %>% 
-#   future_map_dfc(., anon_function, data = sim_data, .progress = TRUE,
-#              .options = future_options(globals = c("sim_data",
-#                                                    "run_first_stage_interactions_fast",
-#                                                    "find_SEs"),
-#                                        packages = c("dplyr",
-#                                                     "modelr",
-#                                                     "margins"))) %>% 
-#   as.matrix()
-# 
-# adjusted_val <- FWERkControl(test_stat = sim_positive$t_stat,
-#              boot_stat = model_boot,
-#              k = 1,
-#              alpha = 0.05)
-# 
-# adjusted_val$Reject %>% 
-#   c() %>% 
-#   enframe(.) %>% 
-#   filter(value == 1)
-# 
-# adjusted_val$CV
-# 
-# 
-# 
-# 
-# fdp <- FDPControl(sim_positive$t_stat,
-#                   boot_stat = model_boot,
-#                   gamma = 0.50,
-#                   0.05)
-# 
-
 
 ##### Power Simulations #####
-
-
-## TODO: Add a bunch of while loops to ensure we get enough draws at higher defier%
-
-
-coefs_negative <- runif(10, -1, 1)
-coefs_negative[1:2] <- abs(coefs_negative[1:2])
-
-
-sim_negative <- coefs_negative %>% 
-  create_fake_data(N = 1000,
-                   model_betas = .) %>% 
-  select_at(vars(-contains(":"), -`(Intercept)`)) %>%
-  run_first_stage_interactions_fast(.,
-                                    "D",
-                                    "Z")
-
-fixed_negative_coefs <- c(0.5, 0.5, -0.5, -0.5, 0, 1, 0.25, 0.3, -0.2, -0.2)
-
-
 ## Split up data generation from power test so we can ensure enough data in each band.
 power_test <- function(coefs, sim_data){
   names(coefs) <- names(sim_data)[1:10]
@@ -284,25 +186,6 @@ power_test <- function(coefs, sim_data){
   
   return(models_df_long)
 }
-
-# negative_example <- power_test(fixed_negative_coefs, sim_dataset)
-
-# 
-# negative_example %>%  
-#   ggplot(aes(x = true_dydx, y = dydx_instrument, colour = model)) +
-#   geom_point() +
-#   geom_abline(slope = 1, intercept = 0) +
-#   facet_wrap(~model)
-# 
-# 
-# power_test(fixed_negative_coefs, sim_dataset) %>% 
-#   filter(true_dydx < 0 | dydx_instrument < 0)
-
-
-## MAKE A TEST
-# power_test(coefs_negative) %>% 
-#   select(dydx_instrument, V1, V2, V3, V4, instrument, true_dydx) %>% 
-#   mutate(diff = true_dydx - dydx_instrument)
 
 
 
@@ -415,66 +298,3 @@ if (run_sim) {
 } else {
   simulations_size <- readr::read_csv("size_simulations_both.csv")
 }
-
-
-
-
-simulations_size %>% 
-  ggplot(aes(x = pval_defier)) +
-  geom_histogram() +
-  facet_wrap(~model)
-
-
-simulations_size %>% 
-  filter(pct_defiers_true == 0) %>% 
-  ggplot(aes(sample = pval_defier)) +
-  stat_qq(distribution = qunif) +
-  geom_abline(intercept = 0, slope = 1) +
-  scale_y_continuous(trans = negative_log_trans(10)) +
-  scale_x_continuous(trans = negative_log_trans(10)) +
-  facet_wrap(~model)
-
-
-simulations_size %>% 
-  filter(pval_defier < 0.05) %>% 
-  summarise(n = nrow(.),
-            proportion = n / nrow(simulations_size))
-
-simulations_size %>% 
-  filter(pct_defiers_true > 0) %>% 
-  nrow()
-
-##### MISC ####
-
-# 
-# sim_positive %>%
-#   arrange(dydx_instrument) %>% 
-#   mutate(rank = row_number()) %>% 
-#   ggplot(aes(x = rank,
-#              y = dydx_instrument,
-#              ymin = dydx_lo,
-#              ymax = dydx_hi)) +
-#   geom_ribbon(alpha = 0.1) +
-#   theme_minimal() +
-#   geom_point() +
-#   labs(title = "Heterogeneous treatment effects partial derivative")
-# 
-# 
-# 
-# sim_negative %>%
-#   arrange(dydx_instrument) %>% 
-#   mutate(rank = row_number()) %>% 
-#   ggplot(aes(x = rank,
-#              y = dydx_instrument,
-#              ymin = dydx_lo,
-#              ymax = dydx_hi)) +
-#   geom_ribbon(alpha = 0.1) +
-#   theme_minimal() +
-#   geom_point() +
-#   labs(title = "Heterogeneous treatment effects partial derivative")
-# 
-# 
-
-
-
-
