@@ -238,11 +238,31 @@ find_SEs <- function(model_data_no_y, model_vcov, instrument){
   return(SE_dydx)
   
 } 
+
+discretise_df <- function(dataset,
+                       vars_to_discretise,
+                       n_tiles){
+  new_df <- vars_to_discretise %>% 
+    map(~select(dataset, .) %>% 
+          pull()) %>% 
+    map_dfc(ntile, n_tiles) %>% 
+    unite(unique_subgroup, everything(), sep = "", remove = FALSE) %>% 
+    mutate_all(factor) 
+
+
+  joint_df <- dataset %>% 
+    select(-vars_to_discretise) %>% 
+    bind_cols(new_df)
+  
+  return(joint_df)
+}
+
 run_first_stage_interactions_fast <- function(dataset,
                                               dependent_variable,
                                               instrument,
                                               weights = NULL,
                                               vcov_func = vcov,
+                                              n_tiles = 2,
                                               ...){
   # Making names consisten to ease quotation
   dataset <- dataset %>% 
@@ -251,31 +271,57 @@ run_first_stage_interactions_fast <- function(dataset,
   # Interaction model formula
   model_formula <- as.formula(paste0(dependent_variable,  "~ ", "instrument", "*."))
   
+  vars_to_discretise <- dataset %>% 
+    select(-dependent_variable, -instrument) %>% 
+    colnames()
+  
+  # discretising dataset
+  dataset_discrete <- discretise_df(dataset = dataset,
+                                    vars_to_discretise = vars_to_discretise,
+                                    n_tiles = n_tiles) 
+  dataset$unique_subgroup <- dataset_discrete$unique_subgroup 
+  
   # Running conventional OLS
-  first_stage_fit <- lm(data = dataset, formula = model_formula, weights = weights)
+  first_stage_fit <- lm(data = dataset_discrete %>% 
+                          select(-unique_subgroup), formula = model_formula, weights = weights)
   degrees_freedom <- first_stage_fit$df.residual
   # Dropping dependent variable - not strictly necessary
-  dataset_unique <- dataset %>% 
-    select(-dependent_variable)
+  dataset_unique <- dataset_discrete %>% 
+    select(-dependent_variable) %>% 
+    group_by(unique_subgroup) %>% 
+    summarise_all(first)
   
   first_stage_margins <- dydx(model = first_stage_fit, data = dataset_unique, variable = "instrument") 
   df_margins <- bind_cols(first_stage_margins %>% 
                             select(contains("dydx")),
                           dataset_unique) %>% 
     as_tibble()
-  df_margins$SE_dydx_instrument <- find_SEs(dataset_unique, vcov_func(first_stage_fit, ...), instrument)
+  df_margins$SE_dydx_instrument <- find_SEs(dataset_unique %>% 
+                                              select(-unique_subgroup), vcov_func(first_stage_fit, ...), instrument)
   
   df_margins <- df_margins %>% 
     mutate(dydx_lo = dydx_instrument - qt(0.975, degrees_freedom) * SE_dydx_instrument,
            dydx_hi = dydx_instrument + qt(0.975, degrees_freedom) * SE_dydx_instrument,
            t_stat = dydx_instrument/SE_dydx_instrument,
            pval_one_neg = pt(t_stat, degrees_freedom),
-           pval_holm = p.adjust(pval_one_neg, method = "holm"))
-  df_margins$dependent_variable <- dataset %>% 
-    select(dependent_variable) %>% 
-    pull()
-  return(df_margins)
+           pval_one_pos = pt(-t_stat, degrees_freedom))
+  
+  df_all_marginals <- inner_join(
+                                dataset,
+                                df_margins %>% 
+                                  select(unique_subgroup,
+                                         dydx_lo,
+                                         dydx_hi,
+                                         dydx_instrument,
+                                         SE_dydx_instrument,
+                                         t_stat,
+                                         pval_one_neg,
+                                         pval_one_pos),
+                                by = "unique_subgroup"
+                                )
+  return(df_all_marginals)
 }
+
 ```
 
 
@@ -886,40 +932,65 @@ Test size, typically denoted by $\alpha$, is set by the analyst and corresponds 
 
 
 ```{r size_sims}
-
-run_sim <- FALSE
-if (run_sim) {
-  library(furrr)
-  plan(multisession)
-  
-  simulations_size <- coef_list %>% 
-    map(abs) %>% 
-    future_map_dfr(simulation_func,
-                   force_positive = TRUE,
-                   .options = future_options(globals = c(
-                                                         "run_first_stage_interactions_fast",
-                                                         "find_SEs",
-                                                         "create_fake_data",
-                                                         "simulation_func",
-                                                         "power_test",
-                                                         "sim_first_stage_forest"),
-                                             packages = c("dplyr",
-                                                          "modelr",
-                                                          "margins",
-                                                          "broom",
-                                                          "grf")),
-                   .progress = TRUE)
-  
-  
-  
-  plan(sequential)
-  write.csv(simulations_size, file = "size_simulations_both.csv", row.names = FALSE)
-  # write.csv(simulations_size, file = "size_simulations_both.csv", row.names = FALSE)  
-} else {
-  simulations_size <- readr::read_csv("C:/Users/edjee/Dropbox/Ed/size_simulations_both_large.csv")
+p.adjust_df <- function(p, method, n){
+  df <- p.adjust.methods %>% 
+    map_dfc(~p.adjust(p = p,
+                      method = .x,
+                      n = n))
+  colnames(df) <- p.adjust.methods
+  return(df)
 }
-simulations_size <- simulations_size %>% 
-  mutate(model = tools::toTitleCase(model))
+
+source("size simulation script.R")
+adjusted_pvals_cov <- new_size_sims_cov %>% 
+  nest(-draw) %>% 
+  mutate(adjusted_pvals = map(.x = data,
+                               ~p.adjust_df(p = .x$pvals,
+                                         method = p.adjust.methods,
+                                              n = 2^unique(.x$n_cov))))
+
+
+
+tidy_adj_p_cov <- adjusted_pvals_cov %>% 
+  unnest() %>% 
+  select(-pvals) %>% 
+  gather(method, pval, holm:none) %>% 
+  mutate(reject_null = ifelse(pval < 0.05, TRUE, FALSE)) %>% 
+  group_by(draw, n_cov, n_tiles,method) %>% 
+  summarise(null_rejected_in_test = ifelse(sum(reject_null) > 0, TRUE, FALSE),
+            n_groups = mean(n_groups)) %>% 
+  ungroup() %>% 
+  group_by(n_cov,n_tiles, method) %>% 
+  summarise(empirical_alpha = sum(null_rejected_in_test) / n(),
+            n_groups = first(n_groups)) %>% 
+  arrange(n_cov) %>% 
+  mutate(n_comp = n_cov^n_tiles,
+    theoretical_alpha = 1 - 0.95^n_comp)
+
+
+ adjusted_pvals_tile <- new_size_sims_tile %>% 
+   nest(-draw) %>% 
+   mutate(adjusted_pvals = map(.x = data,
+                               ~p.adjust_df(p = .x$pvals,
+                                            method = p.adjust.methods,
+                                            n = unique(.x$n_tiles)^unique(.x$n_cov))))
+ 
+tidy_adj_p_tiles <- adjusted_pvals_tile %>% 
+   unnest() %>% 
+   select(-pvals) %>% 
+   gather(method, pval, holm:none) %>% 
+   mutate(reject_null = ifelse(pval < 0.05, TRUE, FALSE)) %>% 
+   group_by(draw, n_tiles, n_cov, method) %>% 
+   summarise(null_rejected_in_test = ifelse(sum(reject_null) > 0, TRUE, FALSE),
+             n_groups = mean(n_groups)) %>%
+   ungroup() %>% 
+   group_by(n_tiles,n_cov,  method) %>% 
+   summarise(empirical_alpha = sum(null_rejected_in_test) / n(),
+             n_groups = first(n_groups)) %>% 
+   arrange(n_tiles) %>% 
+   mutate(n_comp = n_tiles^n_cov,
+          theoretical_alpha = 1 - 0.95^n_comp)
+
 ```
 
 Conventionally, under the null hypothesis we'd expect the distribution of $p$-values to be uniformly distributed on the interval 0, 1. However, this is only the case under the __two-sided__ null. Therefore, in this essay we'd expect $p$-values to have greater density near 1 - intuitively, there are many large, positive partial effects, "deep in the null" to quote @westfall, that contribute to this bunching behaviour.
@@ -927,17 +998,34 @@ Conventionally, under the null hypothesis we'd expect the distribution of $p$-va
 The histogram below reflects this expected behaviour - fortunately, graphically at least, there's little to no evidence that test size isn't adequately controlled.
 ```{r size_hist}
 
-simulations_size %>% 
-  ggplot(aes(x = pval_defier,
-             fill = model)) +
-  geom_histogram(colour = "black") +
+tidy_adj_p_cov %>% 
+    filter(method == "none" | method == "fdr" | method == "holm") %>%
+ggplot(aes(y = empirical_alpha,
+           x = n_cov,
+           colour = method)) +
+  geom_line() +
+  geom_point() +
+  scale_y_log10() +
   theme_minimal() +
-  facet_wrap(~model) +
-  guides(fill = "none") +
-  labs(x = "P-Value",
-       title = "P-Value Distribution Under One-Sided Null")
+  geom_line(aes(y = theoretical_alpha), linetype = "longdash") +
+  geom_hline(yintercept = 0.05, linetype = 4)  
 ```
 
+
+
+```{r}
+tidy_adj_p_tiles %>% 
+    filter(method == "none" | method == "fdr" | method == "holm") %>%
+  ggplot(aes(y = empirical_alpha,
+             x = n_tiles,
+             colour = method)) +
+  geom_line() +
+  geom_point() +
+  scale_y_log10() +
+  theme_minimal() +
+  geom_line(aes(y = theoretical_alpha), linetype = "longdash") +
+  geom_hline(yintercept = 0.05, linetype = 4) 
+```
 
 In the figure below I introduce a visualisation technique possibly unfamiliar to most economists. The empirical CDF of $p$-values is plotted against its theoretical (uniform) quantiles on the negative log scale. The diagonal black line indicates perfect equality between the empirical and theoretical CDF.
 
