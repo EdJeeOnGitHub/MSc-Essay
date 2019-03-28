@@ -9,11 +9,6 @@ library(grf)
 library(tidyr)
 set.seed(1234)
 ##### Fake Data Generation #####
-
-
-# 2 + 2k = n
-coefs_positive <- runif(10, 0, 1)
-
 create_fake_data <- function(N, model_betas, force_positive = FALSE){
   mu <- rep(0, 4)
   
@@ -92,9 +87,7 @@ power_test <- function(coefs, sim_data){
   return(models_df_long)
 }
 
-
-
-coef_matrix <- matrix(runif(100*10, -1, 1), 100, 10)
+coef_matrix <- matrix(runif(5000*10, -1, 1), 5000, 10)
 coef_matrix_df <- coef_matrix %>% 
   as_tibble()
 factor_pos <- ifelse(rowMeans(coef_matrix) < 0, -1, 1) 
@@ -136,6 +129,8 @@ simulation_func <- function(x, force_positive = FALSE){
   return(power_sim_df)
 }
 
+
+##### Actual Running of Simulations
 run_sim <- FALSE
 
 if (run_sim) {
@@ -152,7 +147,6 @@ if (run_sim) {
                                                          "power_test",
                                                          "sim_first_stage_forest"),
                                              packages = c("dplyr",
-                                                          "modelr",
                                                           "margins",
                                                           "broom",
                                                           "grf")),
