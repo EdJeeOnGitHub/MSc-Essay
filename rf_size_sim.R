@@ -72,40 +72,27 @@ rf_size_sims %>%
             n_draws = n(),
             proportion_rejected = n_rejected/n_draws)
 
-adjusted_pvals_rf_size <- rf_size_sims %>% 
-  mutate(bonferroni = pval_one_neg*200000,
-         none = pval_one_neg)
 
+  
+holm_adjusted_pvals <- seq(from = 1000, to = 500000, by = 1000) %>% 
+  map_df(~p.adjust(n = ., method = "holm", p = rf_size_sims$pval_one_neg) %>% 
+           enframe("row", "pval") %>% 
+           mutate(n = .x))
 
-rf_size_sims %>% 
-  nest(-draw) %>% 
-  mutate(adjusted_pvals = map(.x = data,
-                              ~p.adjust_df(p = .x$pval_one_neg,
-                                           method = "bonferroni",
-                                           n = 1)))
-
-
-adjusted_pvals_rf_size %>% 
-  gather(method, pval, bonferroni:none) %>% 
+holm_adjustment_summary <- holm_adjusted_pvals %>% 
   mutate(reject_null = ifelse(pval < 0.05, TRUE, FALSE)) %>% 
-  group_by(method) %>% 
+  group_by(n) %>% 
   summarise(empirical_alpha = sum(ifelse(reject_null, 1, 0)) / n())
-##
 
-adjusted_pvals_cov %>% 
-  unnest() %>% 
-  select(-pvals) %>% 
-  gather(method, pval, holm:none) %>% 
-  mutate(reject_null = ifelse(pval < 0.05, TRUE, FALSE)) %>% 
-  group_by(draw, n_cov, n_tiles,method) %>% 
-  summarise(null_rejected_in_test = ifelse(sum(reject_null) > 0, TRUE, FALSE),
-            n_groups = mean(n_groups)) %>% 
-  ungroup() %>% 
-  group_by(n_cov,n_tiles, method) %>% 
-  summarise(empirical_alpha = sum(null_rejected_in_test) / n(),
-            n_groups = first(n_groups)) %>% 
-  arrange(n_cov) %>% 
-  mutate(n_comp = n_cov^n_tiles,
-         theoretical_alpha = 1 - 0.95^n_comp)
-##
+
+
+holm_adjustment_summary %>%  
+  ggplot(aes(x = n, y = empirical_alpha)) +
+  geom_line() + 
+  geom_hline(yintercept = 0.05, linetype = "longdash") +
+  scale_y_log10() +
+  theme_minimal()
+
+
+
 
