@@ -1,9 +1,3 @@
-library(dplyr)
-library(purrr)
-library(furrr)
-
-
-
 size_sim_func <- function(draw,
                           n_covariates = 4,
                           n_tiles = 2,
@@ -110,3 +104,9 @@ if (run_sim){
   new_size_sims_tile <- readr::read_csv("simulations/size/new_size_sims_tile.csv")
 }
 
+rm(
+  size_sim_func,
+  n_tile_list,
+  run_sim,
+  n_cov_list
+)
