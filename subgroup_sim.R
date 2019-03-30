@@ -1,12 +1,3 @@
-library(dplyr)
-library(Rfast)
-library(margins)
-library(tibble)
-library(ggplot2)
-library(broom)
-library(purrr)
-library(grf)
-library(tidyr)
 set.seed(1234)
 ##### Fake Data Generation #####
 create_fake_data <- function(N, model_betas, force_positive = FALSE){
@@ -47,7 +38,8 @@ power_test <- function(coefs, sim_data){
                                       "Z") %>% 
     mutate(row_id = row_number(),
            pval_one_pos = pnorm(-t_stat),
-           model = "Saturated First Stage")
+           model = "Saturated First Stage") %>% 
+    rename(dependent_variable = D)
   
   interaction_coefs <- c(coefs[2],
                          coefs[7:10])
@@ -79,8 +71,7 @@ power_test <- function(coefs, sim_data){
            -debiased.error) %>% 
     mutate(model = "Forest")
   
-  models_df_long <- suppressWarnings(bind_rows(first_stage_model %>% 
-                                                 select(-pval_holm),
+  models_df_long <- suppressWarnings(bind_rows(first_stage_model,
                                                forest_full_wide))
   
   return(models_df_long)

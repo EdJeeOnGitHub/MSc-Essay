@@ -88,7 +88,8 @@ non_linear_simul_func <- function(N){
            pval_one_pos = pnorm(-t_stat),
            model = "Saturated First Stage",
            true_dydx = true_dydx,
-           first_stage_sign = first_stage_sign)
+           first_stage_sign = first_stage_sign) %>% 
+    rename(dependent_variable = D)
   
   forest_model <- sim_first_stage_forest(fake_data)
   
@@ -109,8 +110,7 @@ non_linear_simul_func <- function(N){
            -debiased.error) %>% 
     mutate(model = "Forest")
   
-  models_df_long <- suppressWarnings(bind_rows(saturated_first_stage %>% 
-                                                 select(-pval_holm),
+  models_df_long <- suppressWarnings(bind_rows(saturated_first_stage,
                                                forest_full_wide))
   return(models_df_long)
 }
