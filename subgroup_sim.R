@@ -1,4 +1,4 @@
-set.seed(1234)
+
 ##### Fake Data Generation #####
 create_fake_data <- function(N, model_betas, force_positive = FALSE){
   mu <- rep(0, 4)
