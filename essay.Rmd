@@ -63,6 +63,7 @@ library(broom)
 library(grf)
 library(StepwiseTest)
 library(modelr)
+library(furrr)
 set.seed(1234)
 ```
 
@@ -245,11 +246,15 @@ discretise_df <- function(dataset,
     map_dfc(ntile, n_tiles) %>% 
     unite(unique_subgroup, everything(), sep = "", remove = FALSE) %>% 
     mutate_all(factor) 
-
+  
+  n_comparisons <- new_df %>%
+                   select(unique_subgroup) %>% 
+                   n_distinct()
 
   joint_df <- dataset %>% 
     select(-vars_to_discretise) %>% 
-    bind_cols(new_df)
+    bind_cols(new_df) %>% 
+    mutate(n_comparisons = n_comparisons)
   
   return(joint_df)
 }
@@ -270,12 +275,18 @@ run_first_stage_interactions_fast <- function(dataset,
   
   vars_to_discretise <- dataset %>% 
     select(-dependent_variable, -instrument) %>% 
+    select_if(function(col) n_distinct(col) > 2) %>% 
     colnames()
   
   # discretising dataset
   dataset_discrete <- discretise_df(dataset = dataset,
                                     vars_to_discretise = vars_to_discretise,
                                     n_tiles = n_tiles) 
+  
+  n_comparisons <- unique(dataset_discrete$n_comparisons)
+  
+  dataset_discrete <- dataset_discrete %>% 
+    select(-n_comparisons)
   dataset$unique_subgroup <- dataset_discrete$unique_subgroup 
   
   # Running conventional OLS
@@ -301,7 +312,10 @@ run_first_stage_interactions_fast <- function(dataset,
            dydx_hi = dydx_instrument + qt(0.975, degrees_freedom) * SE_dydx_instrument,
            t_stat = dydx_instrument/SE_dydx_instrument,
            pval_one_neg = pt(t_stat, degrees_freedom),
-           pval_one_pos = pt(-t_stat, degrees_freedom))
+           pval_one_pos = pt(-t_stat, degrees_freedom),
+           pval_neg_holm = p.adjust(pval_one_neg,
+                                    method = "holm",
+                                    n = n_comparisons))
   
   df_all_marginals <- inner_join(
                                 dataset,
@@ -313,9 +327,11 @@ run_first_stage_interactions_fast <- function(dataset,
                                          SE_dydx_instrument,
                                          t_stat,
                                          pval_one_neg,
-                                         pval_one_pos),
+                                         pval_one_pos,
+                                         pval_neg_holm),
                                 by = "unique_subgroup"
-                                )
+                                ) %>% 
+    mutate(n_comparisons = n_comparisons)
   return(df_all_marginals)
 }
 
@@ -962,7 +978,7 @@ tidy_adj_p_cov <- adjusted_pvals_cov %>%
   summarise(empirical_alpha = sum(null_rejected_in_test) / n(),
             n_groups = first(n_groups)) %>% 
   arrange(n_cov) %>% 
-  mutate(n_comp = n_cov^n_tiles,
+  mutate(n_comp = n_tiles^n_cov,
     theoretical_alpha = 1 - 0.95^n_comp)
 
 
@@ -1435,113 +1451,33 @@ first_stage_interactions_80 <- AE_data_80 %>%
   run_first_stage_interactions_fast(dataset = .,
                                     dependent_variable = "morekids",
                                     instrument = "samesex",
-                                    vcov_func = vcovHC) %>% 
+                                    vcov_func = vcovHC,
+                                    n_tiles = 3) %>% 
   mutate(dataset = "1980") %>% 
-  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm,  dataset, dydx_lo, dydx_hi, t_stat)
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, dataset, dydx_lo, dydx_hi, t_stat, n_comparisons, pval_neg_holm)
 first_stage_interactions_90 <- AE_data_90 %>% 
   run_first_stage_interactions_fast(dataset = .,
                                    dependent_variable = "morekids",
                                    instrument = "samesex",
-                                   vcov_func = vcovHC) %>% 
+                                   vcov_func = vcovHC,
+                                   n_tiles = 3) %>% 
   mutate(dataset = "1990") %>% 
-  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm, dataset, dydx_lo, dydx_hi, t_stat)
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, dataset, dydx_lo, dydx_hi, t_stat, n_comparisons, pval_neg_holm) 
 
-first_stage_interactions_AE <- bind_rows(first_stage_interactions_90, first_stage_interactions_80) 
+first_stage_interactions_AE <- bind_rows(
+  first_stage_interactions_90,
+  first_stage_interactions_80) 
 
+## Number of corrections (theoretical)= 2^6  * 3^4 = 5184 (I think)
 
+## Adjusting confidence intervals for multiple comparisons
+
+first_stage_interactions_AE <- first_stage_interactions_AE %>% 
+  mutate(dydx_lo_a = dydx_instrument - SE_dydx_instrument*qt(1-(0.05/2)/n_comparisons, df = n()/2),
+         dydx_hi_a = dydx_instrument +  SE_dydx_instrument*qt(1-(0.05/2)/n_comparisons, df = n()/2)) 
 
 ```
 
-
-```{r old_stuff, eval = FALSE, echo = FALSE}
-
-run_first_stage_interactions_fast_slow_SE <- function(dataset, dependent_variable, instrument){
-  dataset <- dataset %>% 
-    rename("instrument" = instrument)
-  model_formula <- as.formula(paste0(dependent_variable,  "~ ", "instrument", "*."))
-  first_stage_fit <- lm(data = dataset, formula = model_formula)
-  degrees_freedom <- first_stage_fit$df.residual
-  dydx_margins <- dydx(data = dataset,
-                       model = first_stage_fit,
-                       variable = "instrument") %>% pull()
-  dataset_unique <- dataset %>% 
-    select(-dependent_variable, -instrument) %>% 
-    distinct() %>% 
-    mutate(instrument = TRUE)
-  first_stage_margins <- dydx(model = first_stage_fit, data = dataset_unique, variable = "instrument") 
-  df_margins <- bind_cols(first_stage_margins %>% 
-                            select(contains("dydx")),
-                          dataset_unique) %>% 
-    as_tibble()
-  df_margins$SE_dydx_instrument <- find_SEs_slow(dataset_unique, vcov(first_stage_fit), instrument)
-  
-  df_margins <- df_margins %>% 
-    mutate(dydx_lo = dydx_instrument - qt(0.975, degrees_freedom) * SE_dydx_instrument,
-           dydx_hi = dydx_instrument + qt(0.975, degrees_freedom) * SE_dydx_instrument,
-           t_stat = dydx_instrument/SE_dydx_instrument,
-           pval_one_neg = pt(t_stat, degrees_freedom))
-  return(df_margins)
-}
-
-find_SEs_slow <- function(model_data_no_y, model_vcov, instrument){
-  model_data_no_y <- model_data_no_y %>% 
-    rename("instrument" = instrument)
-  model_formula <- as.formula(paste0("~", "instrument", "*."))
-  
-  model_matrix <- model_data_no_y %>% 
-    mutate(instrument = 1) %>% 
-    model.matrix(model_formula, data = .)
-  
-  gradient_matrix_kinda <- model_matrix %>%
-    as_tibble() %>% 
-    distinct() %>% 
-  mutate_at(vars(-contains(":")), ~(. = 0)) %>% 
-    mutate(instrument = 1) %>% 
-  as.matrix()
-  
-  vcov_dydx_intermediate <- Rfast::mat.mult(gradient_matrix_kinda, model_vcov)
-  vcov_dydx <- Rfast::mat.mult(vcov_dydx_intermediate, Rfast::transpose(gradient_matrix_kinda))
-  SE_dydx <- sqrt(diag(vcov_dydx))
-  return(SE_dydx)
-    
-} 
-
-
-run_first_stage_interactions_slow <- function(dataset, dependent_variable, instrument){
-  dataset <- dataset %>% 
-    rename("instrument" = instrument)
-  model_formula <- as.formula(paste0(dependent_variable,  "~ ", "instrument", "*."))
-  first_stage_fit <- lm(data = dataset, formula = model_formula)
-  degrees_freedom <- first_stage_fit$df.residual
-  dydx_margins <- dydx(data = dataset,
-                       model = first_stage_fit,
-                       variable = "instrument") %>% pull()
-  dataset_unique <- dataset %>% 
-    select(-dependent_variable, -instrument) %>% 
-    distinct() %>% 
-    mutate(instrument = TRUE)
-  first_stage_margins <- margins(first_stage_fit, data = dataset_unique, variables = "instrument", unit_ses = TRUE) 
-  df_margins <- bind_cols(first_stage_margins %>% 
-                            select(contains("dydx")),
-                          dataset_unique) %>% 
-    as_tibble()
-  df_margins <- df_margins %>% 
-    mutate(dydx_lo = dydx_instrument - qt(0.975, degrees_freedom) * SE_dydx_instrument,
-           dydx_hi = dydx_instrument + qt(0.975, degrees_freedom) * SE_dydx_instrument,
-           t_stat = dydx_instrument/SE_dydx_instrument,
-           pval_one_neg = pt(t_stat, degrees_freedom))
-  return(df_margins)
-}
-
-
-
-test <- test_data %>% 
-  run_first_stage_interactions_fast_slow_SE(dataset = ., 
-                                    dependent_variable = "morekids",
-                                    instrument = "samesex")
-
-all_equal(first_stage_interactions, test)
-```
 
 @Angrist_Evans run a first stage regression of the form:
 $$
@@ -1577,7 +1513,7 @@ first_stage_interactions_AE %>%
   sample_n(10000) %>% 
   arrange(dydx_instrument) %>% 
   mutate(rank = row_number()) %>% 
-  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo, ymax = dydx_hi)) +
+  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo_a, ymax = dydx_hi_a)) +
   geom_point(aes(colour = dataset)) +
   geom_ribbon(alpha = 0.2) +
   theme_minimal() +
@@ -1606,6 +1542,7 @@ first_stage_interactions_AE %>%
        title = "Histogram of One-Sided P-Values - Same-Sex Instrument")
 
 first_stage_interactions_AE %>% 
+  distinct(pval_one_neg, dataset) %>% 
   group_by(dataset) %>% 
   ggplot(aes(sample = pval_one_neg, colour = dataset)) +
   stat_qq(distribution = qunif) +
@@ -1640,35 +1577,46 @@ It's hard to argue that defiers are likely to be present in this dataset, partic
 
 
 ```{r maim_FS}
-first_stage_interactions_maim_5 <- df_final5_cleaned %>% 
-  select(classize,
+ 
+
+first_stage_interactions_maim_5 <-  df_final5_cleaned %>% 
+    select(classize,
          tipuach,
          c_size,
-         c_size_squared,
          func1) %>% 
   run_first_stage_interactions_fast(dataset = .,
                                     dependent_variable = "classize",
                                     instrument = "func1",
-                                    vcov_func = sandwich::vcovCL,
-                                    cluster = df_final5_cleaned$classid) %>% 
+                                    vcov_func = vcovCL,
+                                    cluster = df_final5_cleaned$classid,
+                                    n_tiles = 3) %>% 
   mutate(dataset = "Fifth Grade") %>% 
-  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm,  dataset, dydx_lo, dydx_hi, t_stat)
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, dataset, dydx_lo, dydx_hi, t_stat, pval_neg_holm, n_comparisons)
 
 first_stage_interactions_maim_4 <- df_final4_cleaned %>% 
   select(classize,
          tipuach,
          c_size,
-         c_size_squared,
          func1) %>% 
   run_first_stage_interactions_fast(dataset = .,
                                    dependent_variable = "classize",
                                    instrument = "func1",
                                    vcov_func = sandwich::vcovCL,
-                                   cluster = df_final4_cleaned$classid) %>% 
+                                   cluster = df_final4_cleaned$classid,
+                                   n_tiles = 3) %>% 
   mutate(dataset = "Fourth Grade") %>% 
-  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm, dataset, dydx_lo, dydx_hi, t_stat)
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, dataset, dydx_lo, dydx_hi, t_stat, pval_neg_holm, n_comparisons)
 
 first_stage_interactions_maimonides <- bind_rows(first_stage_interactions_maim_5, first_stage_interactions_maim_4) 
+
+
+# N comparisons = 3^2 = 9
+
+first_stage_interactions_maimonides <- first_stage_interactions_maimonides %>% 
+    mutate(dydx_lo_a = dydx_instrument - SE_dydx_instrument*qt(1-(0.05/2)/n_comparisons, df = n()/2),
+         dydx_hi_a = dydx_instrument +  SE_dydx_instrument*qt(1-(0.05/2)/n_comparisons, df = n()/2)) 
+
+
 ```
 
 The distribution of instrument partial effects using Maimonides' rule appear to be definitive; there's no evidence of defiers in either fourth or fifth grade classes. Ranking the instrument partial effects leads to very similar conclusions - in fact, there are no estimated defiers in either dataset.
@@ -1705,7 +1653,7 @@ first_stage_interactions_maimonides %>%
   group_by(dataset) %>% 
   arrange(dydx_instrument) %>% 
   mutate(rank = row_number()) %>% 
-  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo, ymax = dydx_hi)) +
+  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo_a, ymax = dydx_hi_a)) +
   geom_point(aes(colour = dataset)) +
   geom_ribbon(alpha = 0.2) +
   theme_minimal() +
@@ -1760,12 +1708,19 @@ first_stage_interactions_ADH_manu <- df_china %>%
                                     instrument = "d_tradeotch_pw_lag",
                                     weights = df_china$timepwt48,
                                     vcov_func = vcovCL,
-                                    cluster = df_china$statefip) %>% 
+                                    cluster = df_china$statefip,
+                                    n_tiles = 3) %>% 
   mutate(dataset = "ADH") %>% 
-  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm,  dataset, dydx_lo, dydx_hi, t_stat)
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg,  dataset, dydx_lo, dydx_hi, t_stat, pval_neg_holm, n_comparisons)
 
+# N_comparisons theoretical: 3^7 * 2 = 4374, empirically 571
+
+first_stage_interactions_ADH_manu <- first_stage_interactions_ADH_manu %>% 
+    mutate(dydx_lo_a = dydx_instrument - SE_dydx_instrument*qt(1-(0.05/2)/n_comparisons, df = n()),
+         dydx_hi_a = dydx_instrument +  SE_dydx_instrument*qt(1-(0.05/2)/n_comparisons, df = n())) 
 
 ```
+
 
 
 @Autor_Dorn_Hanson's dataset is by far the smallest considered in the essay so simulation results suggest test power will be relatively low and the saturated first stage test should have a comparative advantage over the causal forest test used next. However, even with this caveat the distribution of instrument partial effects seems to display clear presence of defiance.
@@ -1798,7 +1753,7 @@ This seems to be the most "defiant dataset" yet with a large amount of defiers p
 first_stage_interactions_ADH_manu %>% 
   arrange(dydx_instrument) %>% 
   mutate(rank = row_number()) %>% 
-  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo, ymax = dydx_hi)) +
+  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo_a, ymax = dydx_hi_a)) +
   geom_point(aes(colour = dataset)) +
   geom_ribbon(alpha = 0.2) +
   theme_minimal() +
@@ -1865,6 +1820,7 @@ first_stage_summary <- first_stage_results %>%
             n = n(),
             pct_defiers = estimated_defiers / n,
          defier_pval = min(pval_one_neg),
+         defier_pval_adjusted = min(pval_neg_holm),
          defier_tstat = min(t_stat)) %>% 
   ungroup() %>% 
   mutate(dataset = factor(dataset,
@@ -1873,9 +1829,10 @@ first_stage_summary <- first_stage_results %>%
                                      "Fourth Grade",
                                      "Fifth Grade",
                                      "ADH")))
+
 adjusted_p_vals <- first_stage_summary %>% 
   filter(paper == "Same-Sex") %>%
-  mutate(p_adj = p.adjust(defier_pval, "holm")) %>%
+  mutate(p_adj = p.adjust(defier_pval_adjusted, "holm")) %>%
   select(p_adj) %>% 
   pull() %>% 
   round(., 3)
@@ -1893,6 +1850,7 @@ colnames(first_stage_summary) <- c("Paper",
                                    "N",
                                    "% Defier",
                                    "P-Value",
+                                   "Adjusted P-Value",
                                    "T-Stat")
 
 temp_df <- as_tibble(cbind(nms = names(first_stage_summary), t(first_stage_summary)))
