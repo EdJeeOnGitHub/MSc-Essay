@@ -170,7 +170,8 @@ if (run_sim) {
                                                          "discretise_df"),
                                              packages = c("dplyr",
                                                           "margins",
-                                                          "grf")),
+                                                          "grf",
+                                                          "tidyr")),
                    .progress = TRUE) %>% 
     mutate(N = "Small")
   
@@ -201,7 +202,8 @@ if (run_sim) {
                                                          "discretise_df"),
                                              packages = c("dplyr",
                                                           "margins",
-                                                          "grf")),
+                                                          "grf",
+                                                          "tidyr")),
                    .progress = TRUE) %>% 
     mutate(N = "Medium")
   
@@ -233,7 +235,8 @@ if (run_sim) {
                                                          "discretise_df"),
                                              packages = c("dplyr",
                                                           "margins",
-                                                          "grf")),
+                                                          "grf",
+                                                          "tidyr")),
                    .progress = TRUE) %>% 
     mutate(N = "Large")
   

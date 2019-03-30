@@ -141,7 +141,8 @@ if (run_sim) {
                                              packages = c("dplyr",
                                                           "margins",
                                                           "broom",
-                                                          "grf")),
+                                                          "grf",
+                                                          "tidyr")),
                    .progress = TRUE) %>% 
     mutate(N = "Small")
   
@@ -173,7 +174,8 @@ if (run_sim) {
                                              packages = c("dplyr",
                                                           "margins",
                                                           "broom",
-                                                          "grf")),
+                                                          "grf",
+                                                          "tidyr")),
                    .progress = TRUE) %>% 
     mutate(N = "Medium")
   
@@ -205,7 +207,8 @@ if (run_sim) {
                                              packages = c("dplyr",
                                                           "margins",
                                                           "broom",
-                                                          "grf")),
+                                                          "grf",
+                                                          "tidyr")),
                    .progress = TRUE) %>%
     mutate(N = "Large")
 
