@@ -123,7 +123,7 @@ simulation_func <- function(x, N, force_positive = FALSE){
 ##### Actual Running of Simulations
 
 # Small
-run_sim <- FALSE
+run_sim <- TRUE
 if (run_sim) {
   library(furrr)
   plan(multisession)
@@ -136,7 +136,8 @@ if (run_sim) {
                                                          "create_fake_data",
                                                          "simulation_func",
                                                          "power_test",
-                                                         "sim_first_stage_forest"),
+                                                         "sim_first_stage_forest",
+                                                         "discretise_df"),
                                              packages = c("dplyr",
                                                           "margins",
                                                           "broom",
@@ -153,7 +154,7 @@ if (run_sim) {
 }
 
 # Medium
-run_sim <- FALSE
+run_sim <- TRUE
 if (run_sim) {
   library(furrr)
   plan(multisession)
@@ -167,7 +168,8 @@ if (run_sim) {
                                                          "create_fake_data",
                                                          "simulation_func",
                                                          "power_test",
-                                                         "sim_first_stage_forest"),
+                                                         "sim_first_stage_forest",
+                                                         "discretise_df"),
                                              packages = c("dplyr",
                                                           "margins",
                                                           "broom",
@@ -184,7 +186,7 @@ if (run_sim) {
 }
 
 # Large
-run_sim <- FALSE
+run_sim <- TRUE
 if (run_sim) {
   library(furrr)
   plan(multisession)
@@ -198,7 +200,8 @@ if (run_sim) {
                                                          "create_fake_data",
                                                          "simulation_func",
                                                          "power_test",
-                                                         "sim_first_stage_forest"),
+                                                         "sim_first_stage_forest",
+                                                         "discretise_df"),
                                              packages = c("dplyr",
                                                           "margins",
                                                           "broom",
