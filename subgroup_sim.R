@@ -123,7 +123,7 @@ simulation_func <- function(x, N, force_positive = FALSE){
 ##### Actual Running of Simulations
 
 # Small
-run_sim <- TRUE
+run_sim <- FALSE
 if (run_sim) {
   library(furrr)
   plan(multisession)
@@ -155,7 +155,7 @@ if (run_sim) {
 }
 
 # Medium
-run_sim <- TRUE
+run_sim <- FALSE
 if (run_sim) {
   library(furrr)
   plan(multisession)
@@ -188,7 +188,7 @@ if (run_sim) {
 }
 
 # Large
-run_sim <- TRUE
+run_sim <- FALSE
 if (run_sim) {
   library(furrr)
   plan(multisession)
@@ -217,7 +217,7 @@ if (run_sim) {
   plan(sequential)
   write.csv(simulations_power_subgroup_large, file = "simulations/power/simulations_power_subgroup_large.csv", row.names = FALSE)
 } else {
-  simulations_power_subgroup_large <- readr::read_csv("simulations/power/simulations_power_subgroup_large.csv")
+  # simulations_power_subgroup_large <- readr::read_csv("simulations/power/simulations_power_subgroup_large.csv")
 }
 
 rm(
