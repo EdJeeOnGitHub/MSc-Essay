@@ -231,7 +231,7 @@ if (run_sim) {
   plan(sequential)
   write.csv(simulations_power_hetero_medium, file = "simulations/power/simulations_power_hetero_medium.csv", row.names = FALSE)
 } else {
-  simulations_power_hetero_medium <- readr::read_csv("simulations/power/simulations_power_hetero_small.csv")
+  simulations_power_hetero_medium <- readr::read_csv("simulations/power/simulations_power_hetero_medium.csv")
 }
 
 
