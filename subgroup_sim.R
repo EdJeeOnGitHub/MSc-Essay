@@ -217,7 +217,7 @@ if (run_sim) {
   plan(sequential)
   write.csv(simulations_power_subgroup_large, file = "simulations/power/simulations_power_subgroup_large.csv", row.names = FALSE)
 } else {
-  # simulations_power_subgroup_large <- readr::read_csv("simulations/power/simulations_power_subgroup_large.csv")
+  simulations_power_subgroup_large <- readr::read_csv("simulations/power/simulations_power_subgroup_large.csv")
 }
 
 rm(
