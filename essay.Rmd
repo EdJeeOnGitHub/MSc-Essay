@@ -570,7 +570,7 @@ D_i = \pi_0 + \pi_{1}Z_i + \sum_{k=1}^4 (\gamma_{k}x_{ki} +  \delta_{k}(Z_i \tim
 $$
   Here covariates are drawn from a multivariate normal with mean $0$ and variance $\Sigma$.^[I use Cholesky decomposition to generate p.s.d $\Sigma = LL'$ by simulating entries of $L$ drawn from $U(-1, 1)$] Z is a binary instrument drawn from a Bernoulli distribution with probability one half.
   
-  Model parameters are drawn from a uniform distribution with support from -1 to 1. Rather than explicitly generating a positive main effect and defiers at given proportions I let the random draws determine the simulated data properties and discretise the data into 1\% defier bins - this gives good coverage of the defier space up to concentrations of 40\%. However, past 40\% the simulations become particularly uninformative - there's very few simulation draws in this region, typically less than 1\% of all draws due to the nature of the DGP used. Furthermore, the distinction between defier and complier becomes murky when approaching an even split in the population - if this situation arises in practice it's questionable whether LATE really is the estimator of interest to a researcher.
+  Model parameters are drawn from a uniform distribution with support from -1 to 1. Rather than explicitly generating a positive main effect and defiers at given proportions I let the random draws determine the simulated data properties and discretise the data into 1\% defier bins - this gives good coverage of the defier space up to concentrations of 25\%. However, past 25\% the simulations become particularly uninformative - there's very few simulation draws in this region, typically less than 1\% of all draws due to the nature of the DGP used. Furthermore, the distinction between defier and complier becomes murky when approaching an even split in the population - if this situation arises in practice it's questionable whether LATE really is the estimator of interest to a researcher.
 
 In this context we'd expect the saturated first stage to perform best since it exactly matches the data generating process whilst the honest causal forest should still manage to infer the underlying heterogeneous treatment effects created by the interaction terms.
   
@@ -610,8 +610,8 @@ source("subgroup_sim.R")
 
 simulations_power_subgroup <- bind_rows(
                                        simulations_power_subgroup_small,
-                                       simulations_power_subgroup_medium
-                                       # simulations_power_subgroup_large
+                                       simulations_power_subgroup_medium,
+                                        simulations_power_subgroup_large
                                        ) %>% 
     mutate(N = factor(N, levels = c("Small", "Medium", "Large")),
            n_comparisons = ifelse(model == "Saturated First Stage", 2^4, NA),
@@ -783,7 +783,7 @@ sim_bin_summ <- simulations_power_subgroup %>%
 
 sim_bin %>% 
   na.omit() %>% 
-  filter(pct_defiers_true < 0.33) %>% 
+  filter(pct_defiers_true < 0.25) %>% 
   ggplot(aes(x = gr, y = pct_rejected, colour = model, group = model)) +
   geom_point() + 
   geom_line() +
@@ -807,7 +807,7 @@ sim_bin %>%
 ```{r pval_mean_plot}
 sim_bin %>% 
   na.omit() %>% 
-  filter(pct_defiers_true < 0.35) %>% 
+  filter(pct_defiers_true < 0.25) %>% 
   summarise(m_pval = mean(pval_defier),
          sd_pval = sd(pval_defier)) %>% 
   ggplot(aes(x = gr, y = m_pval, colour = model, group = model)) +
@@ -858,21 +858,37 @@ sim_bin %>%
 
 
 Surprisingly the honest causal forest performs poorly in comparison to the saturated first stage test using a completely heterogeneous treatment effect independent of covariates. I'm reluctant to rationalise this behaviour post-hoc. Honest causal forest's behaviour in applied settings is less well understood than a conventional regression model using simple interaction terms but it's still fairly shocking that the predictive power of random forest, widely touted in machine learning competitions such as Kaggle, fails to improve on such a simple OLS model.
-```{r hetero_sim_import, eval = FALSE}
+```{r hetero_sim_import}
 
 source("hetero_sim.R")
 
 simulations_power_indiv <- bind_rows(
                                     simulations_power_hetero_small,
-                                    simulations_power_hetero_medium,
-                                    simulations_power_hetero_large) %>% 
+                                    simulations_power_hetero_medium
+                                    # simulations_power_hetero_large
+                                    ) %>% 
   as_tibble() %>% 
-    mutate(N = factor(N, levels = c("Small", "Medium", "Large")))
+    mutate(N = factor(N, levels = c("Small", "Medium", "Large")),
+           n_comparisons = ifelse(model == "Saturated First Stage", 2^4, NA),
+           n_comparisons = ifelse(model == "Forest" & N == "Small",
+                                  1000^2,
+                                  n_comparisons),
+           n_comparisons = ifelse(model == "Forest" & N == "Medium",
+                                  5000^2,
+                                  n_comparisons),
+           n_comparisons = ifelse(model == "Forest" & N == "Large",
+                                  10000^2,
+                                  n_comparisons))
 
 
 rm(simulations_power_hetero_small,
    simulations_power_hetero_medium,
    simulations_power_hetero_large)
+
+simulations_power_indiv <- simulations_power_indiv %>% 
+  rowwise() %>% 
+  mutate(pval_holm = p.adjust(pval_defier, method = "holm", n = n_comparisons)) %>% 
+  ungroup()
 
 ```
 
@@ -882,10 +898,9 @@ rm(simulations_power_hetero_small,
 ```{r power_indiv_inverse_p, eval = FALSE}
 simulations_power_indiv %>% 
   unite(mod_N, model, N, remove = FALSE) %>% 
-  filter(pval_defier > 1e-300) %>% 
   filter(pct_defiers_true > 0) %>% 
   ggplot(aes(x = pct_defiers_true,
-             y = pval_defier,
+             y = pval_holm,
              group = mod_N)) +
   geom_point(alpha = 0.15, aes(colour = model)) +
   geom_hline(yintercept = 0.05,
@@ -913,7 +928,7 @@ Similar to the subgroup heterogeneous simulations, $p$-values swiftly increase i
 simulations_power_indiv %>% 
   filter(pct_defiers_true > 0) %>% 
   ggplot(aes(x = pct_defiers_true,
-             y = pval_defier,
+             y = pval_holm,
              colour = model)) +
   geom_point(alpha = 0.15,
              aes(colour = model)) +
@@ -967,12 +982,11 @@ sim_bin_indiv <- simulations_power_indiv %>%
            gr) %>%
   mutate(n= n()) %>%
   arrange(gr) %>% 
-  mutate(n_rejected = ifelse(pval_defier < 0.05, 1, 0)) %>% 
+  mutate(n_rejected = ifelse(pval_holm < 0.05, 1, 0)) %>% 
   mutate(pct_rejected = sum(n_rejected)/n) 
 
 sim_bin_indiv %>% 
   na.omit() %>% 
-  filter(pct_defiers_true < 0.35) %>% 
   ggplot(aes(x = gr,
              y = pct_rejected,
              colour = model,
