@@ -1,11 +1,5 @@
-library(dplyr)
-library(margins)
-library(grf)
-library(ggplot2)
-library(furrr)
 
 
-set.seed(1234)
 ## create the X data according to thingy so can tell true defiers.
 create_fake_non_linear_data <- function(N,
                                         force_positive = FALSE){

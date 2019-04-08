@@ -1,9 +1,4 @@
-library(dplyr)
-library(margins)
-library(grf)
-library(ggplot2)
-library(furrr)
-set.seed(1234)
+
 create_fake_heterogeneous_data <- function(N,
                                            model_betas,
                                            force_positive = FALSE){
