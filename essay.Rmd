@@ -355,6 +355,49 @@ run_first_stage_interactions_fast <- function(dataset,
   return(df_all_marginals)
 }
 
+
+run_first_stage_interactions_continuous <- function(dataset,
+                                              dependent_variable,
+                                              instrument,
+                                              weights = NULL,
+                                              vcov_func = vcov,
+                                              ...){
+  # Making names consisten to ease quotation
+  dataset <- dataset %>% 
+    rename("instrument" = instrument)
+  
+  # Interaction model formula
+  model_formula <- as.formula(paste0(dependent_variable,  "~ ", "instrument", "*."))
+  
+  # Running conventional OLS
+  first_stage_fit <- lm(data = dataset, formula = model_formula, weights = weights)
+  degrees_freedom <- first_stage_fit$df.residual
+  # Dropping dependent variable - not strictly necessary
+  dataset_unique <- dataset %>% 
+    select(-dependent_variable)
+  
+  first_stage_margins <- dydx(model = first_stage_fit, data = dataset_unique, variable = "instrument") 
+  df_margins <- bind_cols(first_stage_margins %>% 
+                            select(contains("dydx")),
+                          dataset_unique) %>% 
+    as_tibble()
+  df_margins$SE_dydx_instrument <- find_SEs(dataset_unique, vcov_func(first_stage_fit, ...), instrument)
+  
+  df_margins <- df_margins %>% 
+    mutate(dydx_lo = dydx_instrument - qt(0.975, degrees_freedom) * SE_dydx_instrument,
+           dydx_hi = dydx_instrument + qt(0.975, degrees_freedom) * SE_dydx_instrument,
+           t_stat = dydx_instrument/SE_dydx_instrument,
+          pval_one_neg = pt(t_stat, degrees_freedom),
+           pval_one_pos = pt(-t_stat, degrees_freedom),
+           pval_neg_holm = p.adjust(pval_one_neg,
+                                    method = "holm",
+                                    n = nrow(dataset)^(ncol(dataset)-2)))
+  df_margins$dependent_variable <- dataset %>% 
+    select(dependent_variable) %>% 
+    pull()
+  return(df_margins)
+}
+
 ```
 
 
@@ -895,7 +938,7 @@ simulations_power_indiv <- simulations_power_indiv %>%
 
 
 
-```{r power_indiv_inverse_p, eval = FALSE}
+```{r power_indiv_inverse_p}
 simulations_power_indiv %>% 
   unite(mod_N, model, N, remove = FALSE) %>% 
   filter(pct_defiers_true > 0) %>% 
@@ -924,7 +967,7 @@ simulations_power_indiv %>%
 
 Similar to the subgroup heterogeneous simulations, $p$-values swiftly increase in significance as defier proportion increases although at a noticably slower rate than their less heterogeneous counterparts.
 
-```{r power_indiv_sim_low_prop, eval = FALSE}
+```{r power_indiv_sim_low_prop}
 simulations_power_indiv %>% 
   filter(pct_defiers_true > 0) %>% 
   ggplot(aes(x = pct_defiers_true,
@@ -953,7 +996,7 @@ simulations_power_indiv %>%
 
 A common feature of the individual heterogeneity specification seems to be frequent over reporting of true defier figures - this could, in part, explain some of the discrepancies in test performance when we take the tests to the data since honest causal forest seems particularly prone to this issue.
 
-```{r sim_power_indiv_N_N, eval = FALSE}
+```{r sim_power_indiv_N_N}
 simulations_power_indiv %>% 
   ggplot(aes(x = n_defiers_true,
              y = n_defiers_estimated,
@@ -973,7 +1016,7 @@ simulations_power_indiv %>%
 
 Despite misgivings concerning honest causal forest's relative performance both tests, in absolute terms, still perform strongly with almost perfect identification at 10\% defier proportions. The apparent paradox between a noisier DGP and better test performance highlights why comparisons between tests across DGPs should be undertaken with caution. Power is a function of defier magnitude; defier proportion and the size of the error term but only defier proportion and error variance is held constant across specifications.
 
-```{r power_prop, eval = FALSE}
+```{r power_prop}
 
 sim_bin_indiv <- simulations_power_indiv %>% 
   mutate(gr=cut(pct_defiers_true, labels = FALSE, breaks= seq(0, 1, by = 0.01))/100) %>% 
@@ -1622,6 +1665,8 @@ It's hard to argue that defiers are likely to be present in this dataset, partic
 
 ```{r maim_FS}
  
+
+
 
 first_stage_interactions_maim_5 <-  df_final5_cleaned %>% 
     select(classize,
@@ -2409,13 +2454,31 @@ Secondly, we can compare those identified as defiers by the causal forest with r
 ```{r partial_maim_plot, comp_plot}
 
 
+
+first_stage_interactions_maim_4_continuous <-  df_final4_cleaned %>% 
+    select(classize,
+         tipuach,
+         c_size,
+         func1) %>% 
+  run_first_stage_interactions_continuous(dataset = .,
+                                    dependent_variable = "classize",
+                                    instrument = "func1",
+                                    vcov_func = vcovCL,
+                                    cluster = df_final4_cleaned$classid,
+                                    n_tiles = 3) %>% 
+  mutate(dataset = "Fourth Grade") %>% 
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, dataset, dydx_lo, dydx_hi, t_stat, pval_neg_holm)
+
+
+
+
 maim_4_plot <- df_final4_cleaned %>% 
   select(classize,
          tipuach,
          c_size,
          c_size_squared,
          func1) %>% 
-  bind_cols(first_stage_interactions_maim_4) %>% 
+  bind_cols(first_stage_interactions_maim_4_continuous) %>% 
   gather(key, val, classize:func1)
 maim_4_plot$prediction_rf <- tau_hat_oob_maim_4$predictions
 maim_4_plot <- maim_4_plot %>% 
@@ -2473,13 +2536,36 @@ There seems to be a larger disparity between model results in Autor, Dorn and Ha
 
 ```{r partial_ADH_plot}
 
+
+first_stage_interactions_ADH_manu_continuous <- df_china %>% 
+  select(d_sh_empl_mfg,
+         d_tradeusch_pw,
+         d_tradeotch_pw_lag,
+         l_shind_manuf_cbp,
+         starts_with("reg"),
+         l_sh_popedu_c,
+         l_sh_popfborn,
+         l_sh_empl_f,
+         l_sh_routine33,
+         l_task_outsource,
+         t2) %>% 
+  run_first_stage_interactions_continuous(dataset = .,
+                                    dependent_variable = "d_tradeusch_pw",
+                                    instrument = "d_tradeotch_pw_lag",
+                                    weights = df_china$timepwt48,
+                                    vcov_func = vcovCL,
+                                    cluster = df_china$statefip,
+                                    n_tiles = 3) %>% 
+  mutate(dataset = "ADH") %>% 
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg,  dataset, dydx_lo, dydx_hi, t_stat, pval_neg_holm)
+
 my_cols <- gg_color_hue(8)
 my_cols <- c("purple", my_cols)
 
 ADH_plot <- ADH_matrix %>% 
   as_tibble() %>% 
   select_at(vars(-contains("reg"))) %>% 
-  bind_cols(first_stage_interactions_ADH_manu) %>% 
+  bind_cols(first_stage_interactions_ADH_manu_continuous) %>% 
   gather(key,
          val,
          d_sh_empl_mfg:t2) %>% 
@@ -2518,18 +2604,21 @@ q
 
 # Conclusion
 
-In this essay I've presented two methods to detect defiers in datasets of interest to economists. Power simulations show that both tests are  powerful under a range of adverse data generating specifications and in the face of model misspecification, although both tests struggle to detect non-linear, heterogeneous defiance in smaller datasets. Additional control of test size is unnecessary and only serves to limit test power in both cases.
+In this essay I've presented two methods to detect defiers in datasets of interest to economists. Simulations show that both tests are powerful and correctly sized under a range of adverse data generating specifications and in the face of model misspecification, although both tests struggle to detect non-linear, heterogeneous defiance in smaller datasets. 
 
- Simulations suggest both tests produce similar results but this isn't borne out in an empirical setting. One possible explanation is that Simpson's paradox is striking with a vengeance. Heterogeneous causal effects generated on aggregate at the observed subgroup level aren't representative of individual heterogeneous effects and the causal forest method is picking this up whereas the saturated first stage model isn't. However, I'm cautious of fully accepting the above interpretation - honest causal forest is a relatively new estimation strategy and its properties in real-world, applied settings still aren't well understood. Occam's razor would perhaps suggest that the first stage tests should be trusted most - without a doubt further exploration is required.
+Both tests produce similar results in simulations although model predictions of defier identity rarely agree.  One possible explanation is that Simpson's paradox is striking with a vengeance. Heterogeneous causal effects generated on aggregate at the observed subgroup level aren't representative of individual heterogeneous effects and the causal forest method is picking this up whereas the saturated first stage model isn't. However, I'm cautious of fully accepting the above interpretation - honest causal forest is a relatively new estimation strategy and its properties in real-world, applied settings still aren't well understood. Occam's razor would perhaps suggest that the first stage tests should be trusted most - without a doubt further exploration is required.
  
  Furthermore, two of the datasets from labour economics considered are particularly small and graphing the heterogeneous effects suggest at least one of the datasets' first stage displays non-linear properties therefore test power may be low.
 
  
- The evidence taking the tests to the data is decidedly inconclusive. On the one hand the honest causal forest based test detects defiers with a high degree of certainty and statistical signifance however this behaviour isn't replicated by the saturated first stage based test. It's hard to conclude with any reasonable degree of certainty if defiers are indeed present in the datasets in question without further research - particularly into divergences between the two tests which I fail to replicate through numerous simulations.
 
  
- Throughout the essay I've tried to present visualisations as a convenient tool to assist labour economists in detecting the presence of defiers in their own datasets. Stata's `margins` command and R's port of the command in the `margins` package make the saturated first stage test particularly easy to implement for future researchers.
+ 
+ Throughout the essay I've tried to present visualisations as a convenient tool to assist labour economists in detecting the presence of defiers in their own datasets. Stata's `margins` command and R's port of the command in the `margins` package make the saturated first stage test particularly easy to implement for future researchers. However, a major drawback of the tests presented here is a reliance on observed covariates - if a study only collects information on an outcome variable, the instrumented variable of interest and the instrument neither test will be appropriate.
 
+
+
+ The evidence upon taking the tests to the data is conclusive. Whilst the honest causal forest test predicts many defiers with a high degree of individual certainty, on aggregate after adjusting for multiple comparisons these defiers are no longer statistically significant. The saturated first stage method fails to reject the null hypothesis of no defiers and rarely predicts partial effect point estimates indicative of defiance.  It seems reasonable to conclude that LATE estimates by Angrist and Evans; Angrist and Lavy; and Autor, Dorn and Hanson are well identified with no evidence of defiance.
 
 # Appendix
 
