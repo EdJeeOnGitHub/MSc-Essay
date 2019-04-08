@@ -2600,6 +2600,7 @@ p
 q 
 ```
 
+Whilst not the central focus of this essay, identifiying defiers and those most likely to react negatively to a treatment is a crucial concern for policymakers concerned with welfare and equity. Further work, using a blend of traditional econometrics and machine learning techniques could potentially rationalise the difference in results found above. As it stands, it's difficult to ex-post rationalise defier characteristics when both tests fail to agree on defier identification.
 
 # Conclusion
 
@@ -2610,10 +2611,7 @@ Both tests produce similar results in simulations although model predictions of 
  Furthermore, two of the datasets from labour economics considered are particularly small and graphing the heterogeneous effects suggest at least one of the datasets' first stage displays non-linear properties therefore test power may be low.
 
  
-
- 
- 
- Throughout the essay I've tried to present visualisations as a convenient tool to assist labour economists in detecting the presence of defiers in their own datasets. Stata's `margins` command and R's port of the command in the `margins` package make the saturated first stage test particularly easy to implement for future researchers. However, a major drawback of the tests presented here is a reliance on observed covariates - if a study only collects information on an outcome variable, the instrumented variable of interest and the instrument neither test will be appropriate.
+Throughout the essay I've tried to present visualisations as a convenient tool to assist labour economists in detecting the presence of defiers in their own datasets. Stata's `margins` command and R's port of the command in the `margins` package make the saturated first stage test particularly easy to implement for future researchers. However, a major drawback of the tests presented here is a reliance on observed covariates - if a study only collects information on an outcome variable, the instrumented variable of interest and the instrument neither test will be appropriate.
 
 
 
