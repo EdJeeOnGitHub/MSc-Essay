@@ -575,7 +575,6 @@ holm_adjustment_summary <- holm_adjusted_pvals %>%
   group_by(method, n) %>% 
   summarise(empirical_alpha = sum(ifelse(reject_null, 1, 0)) / n())
 
-holm_adjustment_summary
 
 holm_adjustment_summary %>%  
   ggplot(aes(x = n, y = empirical_alpha, colour = method)) +
@@ -646,11 +645,7 @@ Since I generate highly non-linear and distinct DGPs it's hard to maintain unifo
 
 
 ```{r power_simulation}
-
-
 source("subgroup_sim.R")
-
-
 simulations_power_subgroup <- bind_rows(
                                        simulations_power_subgroup_small,
                                        simulations_power_subgroup_medium,
@@ -689,9 +684,6 @@ It's clear from the figure below that at even moderate defier levels both tests 
 The random forest method, too, performs surprisingly well - even better than the saturated first stage test it would seem at first glance. Both tests improve substantially as sample size increases and as defier proportion increases as we'd expect.
 
 ```{r p_value_normal_scale_plot}
-
-
-
 simulations_power_subgroup %>% 
   filter(pct_defiers_true > 0) %>% 
   ggplot(aes(x = pct_defiers_true,
@@ -701,7 +693,6 @@ simulations_power_subgroup %>%
   geom_hline(yintercept = 0.05,
              linetype = "longdash",
              alpha = 0.5) +
-  guides(colour = "none") +
   scale_y_reverse() +
   scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
   facet_grid(N~model) +
@@ -709,7 +700,8 @@ simulations_power_subgroup %>%
        y = "P-Value",
        caption = "Note: Y-axis scale inverted. \n Dashed line indicates a p-value of 0.05.",
        title = "P-Values from Power Simulations") +
-  theme_minimal()
+  theme_minimal() +
+  guides(colour = "none") 
 ```
 
 
@@ -732,7 +724,8 @@ simulations_power_subgroup %>%
   scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
   guides(colour = "none") +
   theme_minimal() +
-  facet_grid(N~model, scales = "free_y") +
+  facet_grid(N~model, 
+             scales = "free_y") +
   labs(x = "Defier Percentage",
        y = "P-Value",
        caption = "Note: Y-Axis on negative log(10) scale. \n Dashed line indicates a p-value of 0.05. \n Line of best fit in purple.",
@@ -761,7 +754,8 @@ simulations_power_subgroup %>%
   geom_smooth(se = TRUE,
               colour = "violetred",
               alpha = 0.5) +
-  scale_x_continuous(limits = c(0, 0.1), labels = scales::percent_format(accuracy = 1)) +
+  scale_x_continuous(limits = c(0, 0.1),
+                     labels = scales::percent_format(accuracy = 1)) +
   theme_minimal() +
   facet_grid(N~model, scales = "free_y") +
   guides(colour = "none") +
@@ -776,14 +770,14 @@ simulations_power_subgroup %>%
 One concern may be that whilst the tests are capable of detecting defiers, this may be driven by defier activity in the tails. That is, the tests may work but only because of extremely "defiant" defiers since we only consider the most extreme defier in each sample. Fortunately, we can turn to each test's respective model predictions and compare estimated number of defiers against the actual number of defiers present in the data. The results are reassuring, as the number of defiers grow the number of predicted defiers grows too. 
 
 ```{r defier_true_vs_estim}
-
 simulations_power_subgroup %>% 
   ggplot(aes(x = n_defiers_true,
              y = n_defiers_estimated,
              colour = model)) +
   geom_point(alpha = 0.15) +
   facet_grid(N~model) +
-  geom_abline(slope = 1, intercept = 0) +
+  geom_abline(slope = 1,
+              intercept = 0) +
   theme_minimal() +
   guides(colour = "none") +
   labs(x = "N True Defiers",
@@ -900,15 +894,15 @@ sim_bin %>%
 ### Individual Heterogeneity
 
 
-Surprisingly the honest causal forest performs poorly in comparison to the saturated first stage test using a completely heterogeneous treatment effect independent of covariates. I'm reluctant to rationalise this behaviour post-hoc. Honest causal forest's behaviour in applied settings is less well understood than a conventional regression model using simple interaction terms but it's still fairly shocking that the predictive power of random forest, widely touted in machine learning competitions such as Kaggle, fails to improve on such a simple OLS model.
+Again, there seems to be large dispersion in estimated $p$-values even under similar data generating processes and defier coverage. As expected, $p$-values fall (i.e. move up the $y$-axis using a negative log scale.) as defier coverage increases.
 ```{r hetero_sim_import}
 
 source("hetero_sim.R")
 
 simulations_power_indiv <- bind_rows(
                                     simulations_power_hetero_small,
-                                    simulations_power_hetero_medium
-                                    # simulations_power_hetero_large
+                                    simulations_power_hetero_medium,
+                                    simulations_power_hetero_large
                                     ) %>% 
   as_tibble() %>% 
     mutate(N = factor(N, levels = c("Small", "Medium", "Large")),
@@ -939,9 +933,11 @@ simulations_power_indiv <- simulations_power_indiv %>%
 
 
 ```{r power_indiv_inverse_p}
+
 simulations_power_indiv %>% 
   unite(mod_N, model, N, remove = FALSE) %>% 
   filter(pct_defiers_true > 0) %>% 
+  filter(pval_holm > 1e-300) %>% 
   ggplot(aes(x = pct_defiers_true,
              y = pval_holm,
              group = mod_N)) +
@@ -965,9 +961,10 @@ simulations_power_indiv %>%
 ```
 
 
-Similar to the subgroup heterogeneous simulations, $p$-values swiftly increase in significance as defier proportion increases although at a noticably slower rate than their less heterogeneous counterparts.
+Similar to the subgroup heterogeneous simulations, $p$-values swiftly increase in significance as defier proportion increases even at very low levels of defiance. The honest causal forest's superiority in this context is transparent - the LOESS line of best fit seems to be concave rather than convex, increasing at a faster rate than it's traditional counterpart.
 
 ```{r power_indiv_sim_low_prop}
+
 simulations_power_indiv %>% 
   filter(pct_defiers_true > 0) %>% 
   ggplot(aes(x = pct_defiers_true,
@@ -994,9 +991,10 @@ simulations_power_indiv %>%
 
 
 
-A common feature of the individual heterogeneity specification seems to be frequent over reporting of true defier figures - this could, in part, explain some of the discrepancies in test performance when we take the tests to the data since honest causal forest seems particularly prone to this issue.
+A common feature of the individual heterogeneity specification seems to be frequent over reporting of true defier figures - this could, in part, explain some of the discrepancies in test performance when we take the tests to the data since the saturated first stage seems particularly prone to this issue.
 
 ```{r sim_power_indiv_N_N}
+
 simulations_power_indiv %>% 
   ggplot(aes(x = n_defiers_true,
              y = n_defiers_estimated,
@@ -1014,9 +1012,10 @@ simulations_power_indiv %>%
 ```
 
 
-Despite misgivings concerning honest causal forest's relative performance both tests, in absolute terms, still perform strongly with almost perfect identification at 10\% defier proportions. The apparent paradox between a noisier DGP and better test performance highlights why comparisons between tests across DGPs should be undertaken with caution. Power is a function of defier magnitude; defier proportion and the size of the error term but only defier proportion and error variance is held constant across specifications.
+Despite misgivings concerning test performance under model misspecification both tests still perform strongly with almost perfect identification at 15\% defier proportions in the larger datasets. The apparent paradox between a noisier DGP and better test performance highlights why comparisons between tests across DGPs should be undertaken with caution. Power is a function of defier magnitude; defier proportion and the size of the error term but only defier proportion and error variance is held constant across specifications.
 
 ```{r power_prop}
+
 
 sim_bin_indiv <- simulations_power_indiv %>% 
   mutate(gr=cut(pct_defiers_true, labels = FALSE, breaks= seq(0, 1, by = 0.01))/100) %>% 
@@ -1049,13 +1048,12 @@ sim_bin_indiv %>%
 
 ```
 
-Overall it seems both tests maintain reasonable levels of power under model mispecification issues although the honest causal forest suffers significantly more - again this in part, could help explain the observed divergence between the two tests later.
+Overall it seems both tests maintain reasonable levels of power under model mispecification issues although the saturated first stage suffers a little more - again this in part, could help explain the observed divergence between the two tests later.
 
 ### Non-Linear Heterogeneity
 
-```{r sim_power_nl_import, eval = FALSE}
+```{r sim_power_nl_import}
 source("non_linear_sim.R")
-
 simulations_power_nl <- bind_rows(
                                   simulations_power_non_linear_small,
                                   simulations_power_non_linear_medium,
@@ -1071,9 +1069,9 @@ rm(simulations_power_non_linear_small,
 
 
 
-Using the non-linear data generating process the magnitude of $p$-values has increased significantly i.e. $p$-values are much less small compared to the subgroup and individually heterogeneous cases. Now the smallest $p$-values are around $1 \times e^{-35}$ as opposed to $1 \times e^{-250}$ as seen above. Interestingly, the saturated first stage test seems to produce far smaller $p$-values at greater defier proportions than the honest causal forest. With enough data the honest causal forest enjoys a comparative advantage at picking up non-linearities at even the tiniest sign of defiance.
+Using the non-linear data generating process the magnitude of $p$-values has increased significantly i.e. $p$-values are much less small compared to the subgroup and individually heterogeneous cases. Now the smallest $p$-values are around $1 \times e^{-35}$ as opposed to $1 \times e^{-250}$ as seen above. Interestingly, the honest causal forest seems to produce far smaller $p$-values at given defier proportions than the honest causal forest.  The honest causal forest test enjoys a comparative advantage at picking up non-linearities at even the tiniest sign of defiance.
 
-```{r sim_power_p_inverse, eval = FALSE}
+```{r sim_power_p_inverse}
 simulations_power_nl %>% 
   unite(mod_N, model, N, remove = FALSE) %>% 
   filter(pct_defiers_true > 0) %>%
@@ -1102,8 +1100,8 @@ simulations_power_nl %>%
 ```
 
 
-In an non-linear context it seems that saturated first stage struggles to detect defiance in small and moderately sized datasets whereas honest causal forest only struggles in the very smallest dataset.
-```{r sim_power_low_nl, eval = FALSE}
+In a non-linear context it seems that saturated first stage struggles to detect defiance in all three of the datasets considered whereas honest causal forest only struggles in the very smallest dataset.
+```{r sim_power_low_nl}
 
 simulations_power_nl %>% 
   filter(pct_defiers_true > 0) %>% 
@@ -1134,8 +1132,9 @@ simulations_power_nl %>%
 
 
 
-The overestimation of defiers exhibited by the individual heterogeneous effects has vanished and defier estimation seems to be consistent and well behaved throughout. Again, at first glance there's reassuring evidence that the models are accurately estimating the _number_, if not _identity_, of defiers in a dataset and test performance isn't driven by "tail defiance".
-```{r simulations_power_N_N_nl, eval = FALSE}
+The overestimation of defiers exhibited by the individual heterogeneous effects has vanished and defier estimation using honest causal forest seems to be consistent and well behaved throughout. Again, at first glance there's reassuring evidence that honest causal forest is accurately estimating the _number_, if not _identity_, of defiers in a dataset and test performance isn't driven by "tail defiance". However,
+the saturated first stage model now has the opposite issue - it systematically underestimates the number of defiers in a dataset.
+```{r simulations_power_N_N_nl}
 simulations_power_nl %>% 
   ggplot(aes(x = n_defiers_true,
              y = n_defiers_estimated,
@@ -1155,9 +1154,9 @@ simulations_power_nl %>%
 
 
 
-The simulation results suggest the non-linear specification causes the most issues for the tests with small N - this is particularly worrying considering two of the papers used later in the essay have roughly 1400 and 2000 datapoints each. However, at even moderate sized datasets both tests perform admirably. It's remarkable how well the saturated first stage test is able to infer defiance and non-linear heterogeneity even in a DGP with no explicit interaction terms. Again, the honest causal forest's comparative advantage appears to be large N, low defier situations.
+The simulation results suggest the non-linear specification causes the most issues for the tests with small N - this is particularly worrying considering two of the papers used later in the essay have roughly 1400 and 2000 datapoints each. However, at even moderate sized datasets both tests perform admirably. Again, the honest causal forest's comparative advantage appears to be large N, low defier situations however it also holds an absolute advantage when using a non-linear DGP - this is the only DGP considered where honest causal forest outperformed the saturated first stage test in the smallest dataset.
 
-```{r sim_power_nl, eval = FALSE}
+```{r sim_power_nl}
 
 sim_bin_nl <- simulations_power_nl %>% 
   mutate(gr=cut(pct_defiers_true,
@@ -1196,7 +1195,7 @@ sim_bin_nl %>%
 ```
 
 
-
+Overall, both methods fare well under a range of data generating processes. Each test has individual strengths and weaknesses suggesting a thorough investigation of defiance should include both.  
 
 
 # Empirical Results
@@ -2440,7 +2439,7 @@ In conclusion, the honest causal forest test also fails to reject the null hypot
 # Detected Defiers 
 
 In a bid to reconcile such a large difference in estimated defier proportions I now turn to some simple direct comparisons between model results concerning defier identification. First, we consider defiers detected by honest causal forest followed by the saturated first stage - I use
-data from Angrist and Lavy as well as Autor, Dorn and Hanson since these papers predominantly condition on continous rather than discrete covariates.
+data from Angrist and Lavy as well as Autor, Dorn and Hanson since these papers predominantly condition on continous rather than discrete covariates. Furthermore, since we only wish to compare model identification of defiers without performing inference I avoid discretising the data to increase power and improve comparability between the models.  
 
 ## Maimonides' Defiers
 
