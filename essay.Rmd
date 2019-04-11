@@ -19,7 +19,6 @@ abstract: I present some practical tests for detecting failure of the monotonici
   Fisher hypothesis testing methods although these are supplied as well. Simulations
   show similar and impressive results for the saturated first stage and Random Forest
   methods and upon taking the tests to the data unanimously fail to find evidence of defiance.
-
 ---
 
 ```{r setup, include=FALSE}
@@ -445,7 +444,7 @@ p.adjust_df <- function(p, method, n){
   return(df)
 }
 
-source("sfs_size_sim.R")
+source("simulations/code/sfs_size_sim.R")
 adjusted_pvals_cov <- new_size_sims_cov %>% 
   nest(-draw) %>% 
   mutate(adjusted_pvals = map(.x = data,
@@ -557,7 +556,7 @@ In conclusion, simulation results clearly show saturated first stage test size $
 Controlling test size in the honest causal forest setting is a little more challenging. A priori it's not immediately obvious how many comparisons to adjust for. Tentative evidence from simulations suggest that adjustments for $N^2$ comparisons is adequate however I offer no formal proof of this.
 
 ```{r}
-source("rf_size_sim.R")
+source("simulations/code/rf_size_sim.R")
 ```
 
 
@@ -645,7 +644,7 @@ Since I generate highly non-linear and distinct DGPs it's hard to maintain unifo
 
 
 ```{r power_simulation}
-source("subgroup_sim.R")
+source("simulations/code/subgroup_sim.R")
 simulations_power_subgroup <- bind_rows(
                                        simulations_power_subgroup_small,
                                        simulations_power_subgroup_medium,
@@ -897,7 +896,7 @@ sim_bin %>%
 Again, there seems to be large dispersion in estimated $p$-values even under similar data generating processes and defier coverage. As expected, $p$-values fall (i.e. move up the $y$-axis using a negative log scale.) as defier coverage increases.
 ```{r hetero_sim_import}
 
-source("hetero_sim.R")
+source("simulations/code/hetero_sim.R")
 
 simulations_power_indiv <- bind_rows(
                                     simulations_power_hetero_small,
@@ -1053,7 +1052,7 @@ Overall it seems both tests maintain reasonable levels of power under model misp
 ### Non-Linear Heterogeneity
 
 ```{r sim_power_nl_import}
-source("non_linear_sim.R")
+source("simulations/code/non_linear_sim.R")
 simulations_power_nl <- bind_rows(
                                   simulations_power_non_linear_small,
                                   simulations_power_non_linear_medium,
