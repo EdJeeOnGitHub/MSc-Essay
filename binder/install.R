@@ -12,7 +12,6 @@ packages <- c("margins",
               "sandwich",
               "scales",
               "tidyr",
-              "gt",
               "haven",
               "broom",
               "grf",
@@ -20,5 +19,6 @@ packages <- c("margins",
               "furrr")
 install.packages(packages)
 
+devtools::install_github("rstudio/gt")
 
 
