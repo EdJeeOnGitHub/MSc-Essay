@@ -1,6 +1,6 @@
 ## Packages we need to install
 
-packages <- c("RFast",
+packages <- c("devtools",
               "margins",
               "dplyr",
               "ggplot2",
@@ -20,6 +20,7 @@ packages <- c("RFast",
               "modelr",
               "furrr")
 install.packages(packages)
+devtools::install_github("cran/Rfast")
 
 
 
