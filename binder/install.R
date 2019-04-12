@@ -1,7 +1,6 @@
 ## Packages we need to install
 
-packages <- c("devtools",
-              "margins",
+packages <- c("margins",
               "dplyr",
               "ggplot2",
               "ggExtra",
@@ -20,7 +19,6 @@ packages <- c("devtools",
               "modelr",
               "furrr")
 install.packages(packages)
-devtools::install_github("cran/Rfast")
 
 
 
