@@ -18,9 +18,7 @@ abstract: I present some practical tests for detecting failure of the monotonici
   with an emphasis on visualisation and exploration rather than rigid adherence to
   Fisher hypothesis testing methods although these are supplied as well. Simulations
   show similar and impressive results for the saturated first stage and Random Forest
-  methods however this similarity isn't borne out in applied settings leading to a
-  puzzling divergence in test results.
-
+  methods and upon taking the tests to the data unanimously fail to find evidence of defiance.
 ---
 
 ```{r setup, include=FALSE}
@@ -37,14 +35,11 @@ knitr::opts_chunk$set(echo = TRUE,
 &nbsp;
 &nbsp;
 
-<!-- \newline -->
-<!-- \newline -->
-
 The LATE theorem is a cornerstone of identification in economics and labour economists in particular have popularised and preached its virtues. Considering the theorem's importance relatively little effort has been expended ensuring the theorem's assumptions are met in the dataset in question. This essay aims to promote a practical methodology that can be incorporated into current instrumental variables workflow in order to clearly aid researchers in verifying that necessary, but not sufficient, conditions are met empirically in the sample.
 
-Checking that the first stage "goes the right way" through the use of interaction terms or subsampling is common knowledge amongst applied practitioners but rarely discussed in depth. I formalise this notion and present some novel contributions of potential interest to social science researchers using saturated first stage regressions and negative log-log $p$-value transforms popularised by genome wide association studies (GWAS) to present visually striking evidence for or against monotonicity. Next, I show how advances in causal econometric inference using machine learning techniques, developed by @Wager_and_Athey, can be adapted to estimate the underlying first-stage heterogeneity and provide an alternative to the saturated regression model. I explore test power in simulations under a range of data generating processes and find promising results; test power approaches 100\% in large datasets even at low levels of defiance. 
+Checking that the first stage "goes the right way" through the use of interaction terms or subsampling is common knowledge amongst applied practitioners but rarely discussed in depth. I formalise this notion and present some novel contributions of potential interest to social science researchers using saturated first stage regressions and negative log-log $p$-value transforms popularised by genome wide association studies (GWAS) to present visually striking evidence for or against monotonicity. Next, I show how advances in causal econometric inference using machine learning techniques, developed by @Wager_and_Athey, can be adapted to estimate the underlying first-stage heterogeneity and provide an alternative to the saturated regression model. I explore test power in simulations under a range of data generating processes and find promising results; test power approaches 100\% in large datasets as defiance nears a third of population. 
 
-Finally, I take the tests to the data by applying the methodologies to various seminal papers in labour economics and find mixed evidence of defier presence and a surprising divergence in test results. Comparing model results graphically provides some illumination but ultimately the large disagreement in test results is left unexplained. 
+Finally, I take the tests to the data by applying the methodologies to various seminal papers in labour economics and find scant evidence of defiance. Comparing model results graphically provides some illumination and identification of likely defier characteristics which could be of potential interest to policy makers and applied practitioners but ultimately the null hypothesis of zero defiance cannot be rejected in any of the papers considered. 
 
 ```{r code_prelims}
 library(Rfast)
@@ -64,8 +59,18 @@ library(gt)
 library(haven)
 library(broom)
 library(grf)
-library(StepwiseTest)
 library(modelr)
+library(furrr)
+set.seed(1234)
+
+## Common transformation used to rescale graphics in the essay
+negative_log_trans <- function(base = exp(1)) {
+  trans <- function(x) -log(x, base)
+  inv <- function(x) base^(-x)
+  trans_new(paste0("negative_log-", format(base)), trans, inv, 
+            log_breaks(base = base), 
+            domain = c(1e-100, Inf))
+}
 
 ```
 
@@ -161,18 +166,29 @@ $$
 
 Any test of this nature immediately faces two problems. First, we must consider whether control of the family-wise error rate (FWER) in the face of $N$ simultaneous statistical inferences is necessary. Second, we must be confident of test power when performing $N$ inferences based off $N$ datapoints.
 
-Fortunately, our tests are logically related - if we fail to reject the most statistically significant defier this implies we must fail to reject the next significant defier and so on. Likewise, if we do reject the null hypothesis and conclude there's evidence of a defier, considering the most adverse test statistic to the null, then our job is done - we only require evidence of _one_ defier to conclude monotonicity has failed. 
+
+In the binary covariate case outlined above it's clear that the number of simultaneous statistical inferences considered is two; one hypothesis tests of defiance for males and one for females. Extending this to a setting with $K$ "factor" variables, which take $L$ unique, discrete values leads to the following number of comparisons:
+
+$$
+C = \prod^K_{i} L_i
+$$
+
+If the number of levels is the same for each variable we can rewrite this as $C = L^K$. Therefore, the number of comparisons we must adjust for grow quickly in the number of levels and exponentially fast in number of covariates. In the continuous case, as $L \rightarrow N$, the testing procedure is practically paralysed by this adjustment $C = N^K$ since any multiple comparison adjustment necessarily trades off control of test size for power [@shaffer].
 
 
-Another way to consider the above is through consideration of the __closure principle__ of hypothesis testing. The closure of a set is the collection of hypotheses in the original set along with all distinct hypotheses formed by intersections of hypotheses in the set. When we consider just the null hypothesis of monotonicity using the most extreme defier possible, the null hypothesis of the second most extreme defier and so on is _already_ included in the closure of the set - therefore any closed multiple testing procedure considering $N$ hypotheses is effectively double counting our inferences and leading to an adjustment that is too conservative.
+Therefore, in order to adequately control test size without rendering tests powerless I discretise each continuous variable into $n$-quantile bins and create a corresponding dummy variable to interact with the instrument.
+
+This essay faces a constant tradeoff between size and power. An increase in number of quantile bins not only leads to power loss through multiplicity adjustments, but also through weaker identification of interaction effects. Back of the envelope calculations by @gelman_int suggest interaction terms require 16 times more observations than corresponding main effects for accurate identification at a given power level. 
 
 
-Searching for the most adverse test-static, almost conditioning on significance, seems like a guaranteed way to introduce "fishing" or "$p$-hacking" - to ease such concerns I present a rigorous array of power and size simulations and show that a Romano-Wolf adjustment, which lets the data speak to hypothesis dependency through resampling, is far too conservative for the problem at hand.
 
 
-Moving onto our second concern, test power: the model parameters are well-identified since whilst we test $N$ hypotheses, the number of effective parameters we wish to estimate are much lower in fact, only $2K + 1$. The problem can be reconceptualised as constructing prediction intervals for the partial derivates which, whilst heterogeneous, only vary at the subgroup level. This reduction in granularity speaks to the trade-off inherent in heterogeneous causal identification. Whilst we may believe treatment effects vary at the individual level, using conventional methods in the cross-section, we can only identify an average treatment effect for observed subgroups - later in the essay I attempt to use @Wager_and_Athey's causal random forest to address this limitation. 
+Moving onto the second concern, test power: in the continuous case, model parameters are well-identified since whilst I notionally test $N$ hypotheses, the number of effective parameters to estimate are much lower in fact, only $1 +  K + (K  \times L)$ - this corresponds to the instrument's main effect, each covariate's main effect and $K \times L$  interaction terms. The problem can be reconceptualised as constructing prediction intervals for the partial derivates which, whilst heterogeneous, only vary at the subgroup level. This reduction in granularity speaks to the trade-off inherent in heterogeneous causal identification. Whilst we may believe treatment effects vary at the individual level, using conventional methods in the cross-section, we can only identify an average treatment effect for observed subgroups - later in the essay I attempt to use @Wager_and_Athey's causal random forest to address this limitation. 
 
-In conclusion, the first stage interaction test involves estimating the saturated regression, formed by interacting the instrument with available covariates and estimating the instrument partial effect, i.e.the  partial derivative $\frac{ \hat{\partial D_i}}{ \hat{\partial Z_i}}$. Next, we find the most extreme defier with the most adverse test statistic/smallest $p$-value and test the one-sided null hypothesis for negative (positive) partial effects.
+
+To alleviate any potential concerns surrounding size and power I present an array of simulations varying number of quantiles; number of covariates; adjustment method and data generating process. 
+
+In conclusion, the first stage interaction test involves estimating the saturated regression, formed by interacting the instrument with discretised, available covariates and estimating the instrument partial effect, i.e.the  partial derivative $\frac{ \hat{\partial D_i}}{ \hat{\partial Z_i}}$. Next, we find the most extreme defier with the most adverse adjusted test statistic/smallest $p$-value and test the one-sided null hypothesis for negative (positive) partial effects.
 
 ```{r first_stage_test_function}
 # Run Honest Causal Forest on dataframe with VERY specific naming conventions - only use with data from
@@ -238,7 +254,107 @@ find_SEs <- function(model_data_no_y, model_vcov, instrument){
   return(SE_dydx)
   
 } 
+
+discretise_df <- function(dataset,
+                       vars_to_discretise,
+                       n_tiles){
+  new_df <- vars_to_discretise %>% 
+    map(~select(dataset, .) %>% 
+          pull()) %>% 
+    map_dfc(ntile, n_tiles) %>% 
+    unite(unique_subgroup, everything(), sep = "", remove = FALSE) %>% 
+    mutate_all(factor) 
+  
+  n_comparisons <- new_df %>%
+                   select(unique_subgroup) %>% 
+                   n_distinct()
+
+  joint_df <- dataset %>% 
+    select(-vars_to_discretise) %>% 
+    bind_cols(new_df) %>% 
+    mutate(n_comparisons = n_comparisons)
+  
+  return(joint_df)
+}
+
 run_first_stage_interactions_fast <- function(dataset,
+                                              dependent_variable,
+                                              instrument,
+                                              weights = NULL,
+                                              vcov_func = vcov,
+                                              n_tiles = 2,
+                                              ...){
+  # Making names consisten to ease quotation
+  dataset <- dataset %>% 
+    rename("instrument" = instrument)
+  
+  # Interaction model formula
+  model_formula <- as.formula(paste0(dependent_variable,  "~ ", "instrument", "*."))
+  
+  vars_to_discretise <- dataset %>% 
+    select(-dependent_variable, -instrument) %>% 
+    select_if(function(col) n_distinct(col) > 2) %>% 
+    colnames()
+  
+  # discretising dataset
+  dataset_discrete <- discretise_df(dataset = dataset,
+                                    vars_to_discretise = vars_to_discretise,
+                                    n_tiles = n_tiles) 
+  
+  n_comparisons <- unique(dataset_discrete$n_comparisons)
+  
+  dataset_discrete <- dataset_discrete %>% 
+    select(-n_comparisons)
+  dataset$unique_subgroup <- dataset_discrete$unique_subgroup 
+  
+  # Running conventional OLS
+  first_stage_fit <- lm(data = dataset_discrete %>% 
+                          select(-unique_subgroup), formula = model_formula, weights = weights)
+  degrees_freedom <- first_stage_fit$df.residual
+  # Dropping dependent variable - not strictly necessary
+  dataset_unique <- dataset_discrete %>% 
+    select(-dependent_variable) %>% 
+    group_by(unique_subgroup) %>% 
+    summarise_all(first)
+  
+  first_stage_margins <- dydx(model = first_stage_fit, data = dataset_unique, variable = "instrument") 
+  df_margins <- bind_cols(first_stage_margins %>% 
+                            select(contains("dydx")),
+                          dataset_unique) %>% 
+    as_tibble()
+  df_margins$SE_dydx_instrument <- find_SEs(dataset_unique %>% 
+                                              select(-unique_subgroup), vcov_func(first_stage_fit, ...), instrument)
+  
+  df_margins <- df_margins %>% 
+    mutate(dydx_lo = dydx_instrument - qt(0.975, degrees_freedom) * SE_dydx_instrument,
+           dydx_hi = dydx_instrument + qt(0.975, degrees_freedom) * SE_dydx_instrument,
+           t_stat = dydx_instrument/SE_dydx_instrument,
+           pval_one_neg = pt(t_stat, degrees_freedom),
+           pval_one_pos = pt(-t_stat, degrees_freedom),
+           pval_neg_holm = p.adjust(pval_one_neg,
+                                    method = "holm",
+                                    n = n_comparisons))
+  
+  df_all_marginals <- inner_join(
+                                dataset,
+                                df_margins %>% 
+                                  select(unique_subgroup,
+                                         dydx_lo,
+                                         dydx_hi,
+                                         dydx_instrument,
+                                         SE_dydx_instrument,
+                                         t_stat,
+                                         pval_one_neg,
+                                         pval_one_pos,
+                                         pval_neg_holm),
+                                by = "unique_subgroup"
+                                ) %>% 
+    mutate(n_comparisons = n_comparisons)
+  return(df_all_marginals)
+}
+
+
+run_first_stage_interactions_continuous <- function(dataset,
                                               dependent_variable,
                                               instrument,
                                               weights = NULL,
@@ -269,13 +385,17 @@ run_first_stage_interactions_fast <- function(dataset,
     mutate(dydx_lo = dydx_instrument - qt(0.975, degrees_freedom) * SE_dydx_instrument,
            dydx_hi = dydx_instrument + qt(0.975, degrees_freedom) * SE_dydx_instrument,
            t_stat = dydx_instrument/SE_dydx_instrument,
-           pval_one_neg = pt(t_stat, degrees_freedom),
-           pval_holm = p.adjust(pval_one_neg, method = "holm"))
+          pval_one_neg = pt(t_stat, degrees_freedom),
+           pval_one_pos = pt(-t_stat, degrees_freedom),
+           pval_neg_holm = p.adjust(pval_one_neg,
+                                    method = "holm",
+                                    n = nrow(dataset)^(ncol(dataset)-2)))
   df_margins$dependent_variable <- dataset %>% 
     select(dependent_variable) %>% 
     pull()
   return(df_margins)
 }
+
 ```
 
 
@@ -291,16 +411,189 @@ Individual trees are prone to overfitting, to overcome this bootstrapped aggrega
 $$
 D_i = \pi_0 + \pi_{1i}(x_{1i}, x_{2i}, ...)Z_i + \sum_{k=1}^K \gamma_{ki}x_{ki} + \epsilon_i
 $$
+@Athey_Wager_Tibshirani motivate the honest causal forest as a tool for detecting heterogeneous treatment effects that are some unknown function of the covariates - here $\pi_{1i}(x_{1i}, x_{2i}, ...)$ indicates that individual's treatment effect is a function of the $x_i$s.
 
 The testing procedure is therefore similar to the saturated first stage method. We estimate the equation above, using the honest causal forest implemented in the `grf` R library by @Athey_Wager_Tibshirani. Next, we construct a test statistic for the most extreme defier, which will be asymptotically normally distributed, and perform a one-sided hypothesis test of the heterogeneous main effect.
 
-An advantage of honest causal forest is that it offers a method to estimate heterogeneous individual level causal effects rather than each individual's subgroup heterogeneous effect which only varies within the subgroup due to variation in an individual's covariates. However, there's a tradeoff - all else equal we'd expect the uncertainty of individual causal estimates to be far larger than those estimated at the subgroup level. Indeed, this greater uncertainty appears empirically when we take the test to the data. 
+An advantage of honest causal forest is that it offers a method to estimate heterogeneous individual level causal effects rather than each individual's subgroup heterogeneous effect which only varies within the subgroup due to variation in an individual's covariates. However, there's a tradeoff - all else equal we'd expect the uncertainty of individual causal estimates to be far larger than those estimated at the subgroup level. Indeed, this greater uncertainty appears empirically when we take the test to the data. Furthermore, it's no longer immediately obvious how many adjustments are required to control test size. In size simulations later in this essay I show that a naive adjustment of $N$ comparisons for $N$ estimated heterogeneous effects inadequately controls test size; even when using a Bonferroni adjustment, notorious for its conservative nature. 
 
 Another disadvantage of honest causal forest is its relatively poor performance with few numbers of covariates. @Athey_Wager_Tibshirani recommend at least three covariates; the power simulations presented below use 4 covariates and every paper replicated in this essay have at least three covariates so this constraint isn't as strict as it may appear at first.
 
 Finally, another issue with honest causal forest - in this essay at least - is its large computational cost. Fitting 24,000 simulation draws of honest causal forest is extremely computationally intensive. Furthermore, fitting @Angrist_Evans's census data proved prohibitively expensive and a random, smaller, sample is fit instead.  This increased complexity and computational cost may be a stumbling block for applied practitioners seeking to implement honest causal forest in their own work.
 
 # Simulations
+
+
+## Size Simulations
+
+### Saturated First Stage
+
+Test size, typically denoted by $\alpha$, is set by the analyst and corresponds to the probability of incorrectly rejecting a true null hypothesis. When performing simultaneous inferences a common concern is that test properties at the individual level, usually an error rate, no longer hold on aggregate. To combat this concern we now examine test size using 2000 simulated datasets of 1000 observations each generated under the null hypothesis - where no defiers are present.
+
+
+To illustrate the multiple comparison problems' dual drivers, number of covariates used and number of quantile bins, I undertake the simulations twice. In the first simulation I vary the number of covariates considered and fix number of quantiles at 2 (i.e. a binary dummy variable with value 1 if an observation is above its median). In the second the number of quantile bins used is varied and covariates are fixed at 4. 
+
+```{r size_sims}
+p.adjust_df <- function(p, method, n){
+  df <- method %>% 
+    map_dfc(~p.adjust(p = p,
+                      method = .x,
+                      n = n))
+  colnames(df) <- method
+  return(df)
+}
+
+source("simulations/code/sfs_size_sim.R")
+adjusted_pvals_cov <- new_size_sims_cov %>% 
+  nest(-draw) %>% 
+  mutate(adjusted_pvals = map(.x = data,
+                               ~p.adjust_df(p = .x$pvals,
+                                         method = c("none", "fdr","holm"),
+                                              n = 2^unique(.x$n_cov))))
+
+
+
+tidy_adj_p_cov <- adjusted_pvals_cov %>% 
+  unnest() %>% 
+  select(-pvals) %>% 
+  gather(method, pval, holm:none) %>% 
+  mutate(reject_null = ifelse(pval < 0.05, TRUE, FALSE)) %>% 
+  group_by(draw, n_cov, n_tiles,method) %>% 
+  summarise(null_rejected_in_test = ifelse(sum(reject_null) > 0, TRUE, FALSE),
+            n_groups = mean(n_groups)) %>% 
+  ungroup() %>% 
+  group_by(n_cov,n_tiles, method) %>% 
+  summarise(empirical_alpha = sum(null_rejected_in_test) / n(),
+            n_groups = first(n_groups)) %>% 
+  arrange(n_cov) %>% 
+  mutate(n_comp = n_tiles^n_cov,
+    theoretical_alpha = 1 - 0.95^n_comp)
+
+
+ adjusted_pvals_tile <- new_size_sims_tile %>% 
+   nest(-draw) %>% 
+   mutate(adjusted_pvals = map(.x = data,
+                               ~p.adjust_df(p = .x$pvals,
+                                            method = c("none", "fdr", "holm"),
+                                            n = unique(.x$n_tiles)^unique(.x$n_cov))))
+ 
+tidy_adj_p_tiles <- adjusted_pvals_tile %>% 
+   unnest() %>% 
+   select(-pvals) %>% 
+   gather(method, pval, holm:none) %>% 
+   mutate(reject_null = ifelse(pval < 0.05, TRUE, FALSE)) %>% 
+   group_by(draw, n_tiles, n_cov, method) %>% 
+   summarise(null_rejected_in_test = ifelse(sum(reject_null) > 0, TRUE, FALSE),
+             n_groups = mean(n_groups)) %>%
+   ungroup() %>% 
+   group_by(n_tiles,n_cov,  method) %>% 
+   summarise(empirical_alpha = sum(null_rejected_in_test) / n(),
+             n_groups = first(n_groups)) %>% 
+   arrange(n_tiles) %>% 
+   mutate(n_comp = n_tiles^n_cov,
+          theoretical_alpha = 1 - 0.95^n_comp)
+
+```
+
+The plot below shows empirical $\alpha$ - the proportion of null hypotheses rejected in simulations - at a given number of covariates.   The blue line shows unadjusted $p$-values closely following the theoretical, unadjusted, test size $\alpha^* = 1 - (1 - 0.05)^{2^K}$ indicating that test size is inadequately controlled. 
+
+The Holm-Bonferroni procedure [@Holm_Bonferroni] controls the family-wise error rate under the same assumptions as a classical Bonferroni procedure but is uniformly more powerful and therefore used throughout this essay unless otherwise specified. For comparison, I also show control of the false discovery rate, proposed by @fdr, in orange. Since the monotonicity assumption fails under the presence of just _one_ defier we wish to control the family wise error rate, the probability of at least one false rejection, and not the false discovery rate, which corresponds to the proportion of false rejections out of all null hypotheses rejected. 
+
+
+```{r size_hist}
+
+tidy_adj_p_cov %>% 
+    filter(method == "none" | method == "fdr" | method == "holm") %>%
+ggplot(aes(y = empirical_alpha,
+           x = n_cov,
+           colour = method)) +
+  geom_line() +
+  geom_point() +
+  scale_y_log10() +
+  theme_minimal() +
+  geom_line(aes(y = theoretical_alpha), linetype = "longdash", colour = "black") +
+  geom_hline(yintercept = 0.05, linetype = 4)  +
+  labs(x = "Number of Covariates",
+       y = "Empirical Alpha",
+       title = "Saturated First Stage Test Size Simulations",
+       caption = "Note: Dotted lines indicate theoretical test size after considering \n number of multiple comparisons and a test size of 0.05 respectively.",
+       colour = "Method") +
+  theme(legend.position = "bottom") +
+  scale_x_continuous(breaks = 1:10)
+```
+
+Moving onto the number of quantile bins the multiple comparison problem becomes even more apparent. Using just 3 quantile bins - low, medium and high for instance - with 4 explanatory covariates leads to rejection of the null hypothesis in almost 90\% of cases when the null is in fact true.
+
+```{r}
+tidy_adj_p_tiles %>% 
+    filter(method == "none" | method == "fdr" | method == "holm") %>%
+  ggplot(aes(y = empirical_alpha,
+             x = n_tiles,
+             colour = method)) +
+  geom_line() +
+  geom_point() +
+  scale_y_log10() +
+  theme_minimal() +
+  geom_line(aes(y = theoretical_alpha), linetype = "longdash", colour = "black") +
+  geom_hline(yintercept = 0.05, linetype = 4) +
+  labs(x = "Number of Quantile Bins",
+       y = "Empirical Alpha",
+       title = "Saturated First Stage Test Size Simulations",
+       caption = "Note: Dotted lines indicate theoretical test size after considering \n number of multiple comparisons and a test size of 0.05 respectively.",
+       colour = "Method") +
+  theme(legend.position = "bottom") +
+  scale_x_continuous(breaks = 2:9)
+```
+
+Again, test size is adequately controlled after a Holm-Bonferroni adjustment. Adjustments in both examples appear to err on the side of caution -  alternative methodologies not considered here, such as a Romano-Wolf adjustment or Bayesian hierarchical model, could offer potential room for improvement.   
+
+
+In conclusion, simulation results clearly show saturated first stage test size $\geq \alpha$ without any additional control procedures. In the remainder of the essay $p$-values are adjusted for the number of comparisons made. 
+
+### Honest Causal Forest
+
+Controlling test size in the honest causal forest setting is a little more challenging. A priori it's not immediately obvious how many comparisons to adjust for. Tentative evidence from simulations suggest that adjustments for $N^2$ comparisons is adequate however I offer no formal proof of this.
+
+```{r}
+source("simulations/code/rf_size_sim.R")
+```
+
+
+The honest causal forest test faces a far greater multiple comparison problem - test size simulations using 2000 simulated datasets with 1000 observations each reject the null hypothesis in almost every dataset with unadjusted $p$-values. The family wise error rate is only controlled at a level less than or equal to $\alpha$ when adjusting for one million ($1000^2$) comparisons.^[Which is perhaps approximating $N \times (N-1)$ adjustments - verifying this rigorously is, again, computationally prohibitive.]
+
+```{r}
+
+holm_adjusted_pvals <- seq(from = 1000, to = 1000000, by = 1000) %>% 
+  map_df(~p.adjust_df(n = ., method = c("none", "fdr", "holm"), p = rf_size_sims$pval_one_neg) %>% 
+           mutate(n = .x))
+
+holm_adjustment_summary <- holm_adjusted_pvals %>% 
+  gather(method, pval, -n) %>% 
+  mutate(reject_null = ifelse(pval < 0.05, TRUE, FALSE)) %>% 
+  group_by(method, n) %>% 
+  summarise(empirical_alpha = sum(ifelse(reject_null, 1, 0)) / n())
+
+
+holm_adjustment_summary %>%  
+  ggplot(aes(x = n, y = empirical_alpha, colour = method)) +
+  geom_line(size = 1) + 
+  geom_hline(yintercept = 0.05, linetype = "longdash") +
+  scale_y_log10() +
+  theme_minimal() +
+  labs(x = "Multiple Comparison Adjustments",
+       y = "Empirical Alpha",
+       title = "Honest Causal Forest Test Size Simulations",
+       caption = "Note: Dotted line indicates a test size of 0.05.",
+       colour = "Method") +
+  theme(legend.position = "bottom") +
+  scale_x_continuous(label = comma)
+```
+
+
+&nbsp;
+
+
+Now that test size has been explored in both tests, I move onto test power. Given the large adjustments that must be made in both tests it's reasonable to worry that test power is particularly low - fortunately, simulations show that this only seems to be true in smaller datasets of around 1000 observations. 
 
 
 ## Power Simulations
@@ -315,9 +608,9 @@ $$
 D_i = \pi_0 + \pi_{1}Z_i + \sum_{k=1}^4 (\gamma_{k}x_{ki} +  \delta_{k}(Z_i \times x_{ki})) + \epsilon_i; \ \epsilon_i \sim N(0, 5^2) \\
 \pi_1, \gamma_k, \delta_k \sim U(-1, 1)
 $$
-  Here covariates are drawn from a multivariate normal mean $0$ and variance $\Sigma$.^[I use Cholesky decomposition to generate p.s.d $\Sigma = LL'$ by simulating entries of $L$ drawn from $U(-1, 1)$] The fourth covariate is transformed into a dummy variable depending on its sign and Z is a binary instrument drawn from a Bernoulli distribution with probability one half.
+  Here covariates are drawn from a multivariate normal with mean $0$ and variance $\Sigma$.^[I use Cholesky decomposition to generate p.s.d $\Sigma = LL'$ by simulating entries of $L$ drawn from $U(-1, 1)$] Z is a binary instrument drawn from a Bernoulli distribution with probability one half.
   
-  Model parameters are drawn from a uniform distribution with support from -1 to 1. Rather than explicitly generating a positive main effect and defiers at given proportions I let the random draws determine the simulated data properties and discretise the data into 1\% defier bins - this gives good coverage of the defier space up to concentrations of 40\%. However, past 40\% the simulations become particularly uninformative - there's very few simulation draws in this region, typically 1\% of all draws due to the nature of the DGP used. Furthermore, the distinction between defier and complier becomes murky when approaching an even split in the population - if this situation arises in practice it's questionable whether LATE really is the estimator of interest to a researcher.
+  Model parameters are drawn from a uniform distribution with support from -1 to 1. Rather than explicitly generating a positive main effect and defiers at given proportions I let the random draws determine the simulated data properties and discretise the data into 1\% defier bins - this gives good coverage of the defier space up to concentrations of 25\%. However, past 25\% the simulations become particularly uninformative - there's very few simulation draws in this region, typically less than 1\% of all draws due to the nature of the DGP used. Furthermore, the distinction between defier and complier becomes murky when approaching an even split in the population - if this situation arises in practice it's questionable whether LATE really is the estimator of interest to a researcher.
 
 In this context we'd expect the saturated first stage to perform best since it exactly matches the data generating process whilst the honest causal forest should still manage to infer the underlying heterogeneous treatment effects created by the interaction terms.
   
@@ -348,183 +641,35 @@ Finally, I create defiers through a non-linear data generating process similar t
 Since I generate highly non-linear and distinct DGPs it's hard to maintain uniform defier coverage and defier "strength" - the magnitude of a defiers' treatment effect in comparison to a complier - between contexts. Therefore, comparisons across DGPs should be made sparingly and with caution. Comparisons within simulation settings between tests is the focus of this essay.
 
 
-```{r sim_data_generation_and_power_test}
-
-create_fake_data <- function(N, model_betas, force_positive = FALSE){
-  mu <- rep(0, 4)
-  
-  A <- matrix(runif(4^2)*2-1, ncol=4) 
-  Sigma <- t(A) %*% A
-  
-  if (force_positive == TRUE){
-    X_data <- abs(MASS::mvrnorm(n = N, mu = mu, Sigma = Sigma)) %>% 
-      as_tibble() %>% 
-      mutate(Z = rbinom(n = N, 1, 0.5),
-             V4 = ifelse(V4 > 0.5, 1, 0))
-  } else {
-    X_data <- MASS::mvrnorm(n = N, mu = mu, Sigma = Sigma) %>% 
-      as_tibble() %>% 
-      mutate(Z = rbinom(n = N, 1, 0.5),
-             V4 = ifelse(V4 > 0, 1, 0))
-  }
-  
-  X_data_interactions <- model.matrix(~ Z*., data = X_data)
-  D <- X_data_interactions %*% model_betas
-  sim_data <- X_data_interactions %>% 
-    as_tibble() %>% 
-    mutate(D = D[, 1] + rnorm(N)*5)
-  return(sim_data)
-}
-
-power_test <- function(coefs, sim_data){
-  names(coefs) <- names(sim_data)[1:10]
-  
-  
-  first_stage_model <- sim_data %>% 
-    select_at(vars(-contains(":"), -`(Intercept)`)) %>% 
-    run_first_stage_interactions_fast(.,
-                                      "D",
-                                      "Z") %>% 
-    mutate(row_id = row_number(),
-           pval_one_pos = pnorm(-t_stat),
-           model = "saturated first stage")
-  
-  interaction_coefs <- c(coefs[2],
-                         coefs[7:10])
-  interaction_X <- sim_data %>% 
-    select_at(vars(Z, contains("V"), -contains(":"))) %>% 
-    mutate(Z = 1)
-  interaction_X <- model.matrix(~Z*., data = interaction_X) %>% 
-    as_tibble() %>% 
-    select_at(vars(Z, contains(":"))) %>% 
-    as.matrix()
-  
-  true_dydx <- interaction_X %*% interaction_coefs
-  first_stage_model$true_dydx <- true_dydx[,1]
-  forest_model <- sim_first_stage_forest(sim_data)
-  
-  forest_full_wide <- left_join(forest_model,
-                                first_stage_model %>% 
-                                  select_at(vars(row_id,
-                                                 contains("V", ignore.case = FALSE),
-                                                 instrument,
-                                                 true_dydx,
-                                                 dependent_variable)),
-                                by = "row_id") %>% 
-    rename("dydx_instrument" = predictions,
-           "SE_dydx_instrument" = sigma_hat,
-           "dydx_lo" = prediction_lo,
-           "dydx_hi" = prediction_hi) %>% 
-    select(-variance.estimates,
-           -debiased.error) %>% 
-    mutate(model = "forest")
-  
-  models_df_long <- suppressWarnings(bind_rows(first_stage_model %>% 
-                                                 select(-pval_holm),
-                                               forest_full_wide))
-  
-  return(models_df_long)
-}
-
-
-simulation_func <- function(x, force_positive = FALSE){
-  sim_data <- create_fake_data(N = 1000,
-                               model_betas = x,
-                               force_positive = force_positive)
-  
-  pw_test_data <- power_test(x, sim_data)
-  
-  estimated_coef <- lm(dependent_variable ~ instrument + V1 + V2 + V3 + V4, data = pw_test_data) %>% 
-    tidy() %>% 
-    filter(term == "instrument") %>% 
-    select(estimate)
-  
-  pw_test_data$estimate <- estimated_coef[[1]]
-  
-  power_sim_df <- pw_test_data %>%   
-    mutate(defier_true = !(sign(true_dydx) == (sign(estimate))),
-           defier_estimated = !(sign(dydx_instrument) == (sign(estimate)))) %>% 
-    group_by(model) %>% 
-    summarise(min_tstat = min(t_stat),
-              max_tstat = max(t_stat),
-              pval_one_neg = min(pval_one_neg),
-              mean_dydx = mean(dydx_instrument),
-              pval_one_pos = min(pval_one_pos),
-              n_defiers_true = sum(defier_true),
-              pct_defiers_true = n_defiers_true/nrow(pw_test_data),
-              n_defiers_estimated = sum(defier_estimated),
-              pct_defiers_estimated = n_defiers_estimated/nrow(pw_test_data),
-              estimate = first(estimate)) %>% 
-    mutate(pval_defier = ifelse(estimate > 0,
-                                pval_one_neg,
-                                pval_one_pos))
-  return(power_sim_df)
-}
-
-```
-
-
-
-
 
 ```{r power_simulation}
-coef_matrix <- matrix(runif(100*10, -1, 1), 100, 10)
-coef_matrix_df <- coef_matrix %>% 
-  as_tibble()
-factor_pos <- ifelse(rowMeans(coef_matrix) < 0, -1, 1) 
+source("simulations/code/subgroup_sim.R")
+simulations_power_subgroup <- bind_rows(
+                                       simulations_power_subgroup_small,
+                                       simulations_power_subgroup_medium,
+                                        simulations_power_subgroup_large
+                                       ) %>% 
+    mutate(N = factor(N, levels = c("Small", "Medium", "Large")),
+           n_comparisons = ifelse(model == "Saturated First Stage", 2^4, NA),
+           n_comparisons = ifelse(model == "Forest" & N == "Small", 1000^2, n_comparisons),
+           n_comparisons = ifelse(model == "Forest" & N == "Medium",
+                                  5000^2,
+                                  n_comparisons),
+           n_comparisons = ifelse(model == "Forest" & N == "Large",
+                                  10000^2,
+                                  n_comparisons))
 
-coef_list <- lapply(seq_len(nrow(coef_matrix)), function(i) coef_matrix[i,]*factor_pos[i])
 
 
-run_sim <- FALSE
+rm(simulations_power_subgroup_small,
+   simulations_power_subgroup_medium,
+   simulations_power_subgroup_large)
 
-if (run_sim) {
-  library(furrr)
-  plan(multisession)
-  
-  simulations_power <- coef_list %>% 
-    future_map_dfr(simulation_func,
-                   .options = future_options(globals = c(
-                                                         "run_first_stage_interactions_fast",
-                                                         "find_SEs",
-                                                         "create_fake_data",
-                                                         "simulation_func",
-                                                         "power_test",
-                                                         "sim_first_stage_forest"),
-                                             packages = c("dplyr",
-                                                          "modelr",
-                                                          "margins",
-                                                          "broom",
-                                                          "grf")),
-                   .progress = TRUE)
-  
-  
-  
-  plan(sequential)
-  # write.csv(simulations_power, file = "power_simulations.csv", row.names = FALSE)
-  # write.csv(simulations_power, file = "power_simulations_both.csv", row.names = FALSE)  
-} else {
-  simulations_power_large <- readr::read_csv("C:/Users/edjee/Dropbox/Ed/power_simulations_both_large.csv") %>% 
-    mutate(N = "Large")
-  simulations_power_medium <- readr::read_csv("C:/Users/edjee/Dropbox/Ed/power_simulations_both_medium.csv") %>% 
-    mutate(N = "Medium")
-  simulations_power_small <- readr::read_csv("C:/Users/edjee/Dropbox/Ed/power_simulations_both_small.csv") %>% 
-    mutate(N = "Small")
-  simulations_power_subgroup <- bind_rows(simulations_power_small,
-                                 simulations_power_medium,
-                                 simulations_power_large) %>% 
-    mutate(N = factor(N, levels = c("Small", "Medium", "Large")))
-}
 
 simulations_power_subgroup <- simulations_power_subgroup %>% 
-  mutate(model = tools::toTitleCase(model))
-
-rm(simulations_power_small,
-   simulations_power_medium,
-   simulations_power_large,
-   coef_matrix_df,
-   coef_matrix,
-   coef_list)
+  rowwise() %>% 
+  mutate(pval_holm = p.adjust(pval_defier, method = "holm", n = n_comparisons)) %>% 
+  ungroup()
 ```
 
 
@@ -537,25 +682,15 @@ It's clear from the figure below that at even moderate defier levels both tests 
 The random forest method, too, performs surprisingly well - even better than the saturated first stage test it would seem at first glance. Both tests improve substantially as sample size increases and as defier proportion increases as we'd expect.
 
 ```{r p_value_normal_scale_plot}
-negative_log_trans <- function(base = exp(1)) {
-  trans <- function(x) -log(x, base)
-  inv <- function(x) base^(-x)
-  trans_new(paste0("negative_log-", format(base)), trans, inv, 
-            log_breaks(base = base), 
-            domain = c(1e-100, Inf))
-}
-
-
 simulations_power_subgroup %>% 
   filter(pct_defiers_true > 0) %>% 
   ggplot(aes(x = pct_defiers_true,
-             y = pval_defier,
+             y = pval_holm,
              colour = model)) +
   geom_point(alpha = 0.15) +
   geom_hline(yintercept = 0.05,
              linetype = "longdash",
              alpha = 0.5) +
-  guides(colour = "none") +
   scale_y_reverse() +
   scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
   facet_grid(N~model) +
@@ -563,7 +698,8 @@ simulations_power_subgroup %>%
        y = "P-Value",
        caption = "Note: Y-axis scale inverted. \n Dashed line indicates a p-value of 0.05.",
        title = "P-Values from Power Simulations") +
-  theme_minimal()
+  theme_minimal() +
+  guides(colour = "none") 
 ```
 
 
@@ -576,7 +712,7 @@ simulations_power_subgroup %>%
   unite(mod_N, model, N, remove = FALSE) %>% 
   filter(pct_defiers_true > 0) %>% 
   ggplot(aes(x = pct_defiers_true,
-             y = pval_defier,
+             y = pval_holm,
              group = mod_N)) +
   geom_point(alpha = 0.15, aes(colour = model)) +
   geom_hline(yintercept = 0.05,
@@ -586,7 +722,8 @@ simulations_power_subgroup %>%
   scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
   guides(colour = "none") +
   theme_minimal() +
-  facet_grid(N~model, scales = "free_y") +
+  facet_grid(N~model, 
+             scales = "free_y") +
   labs(x = "Defier Percentage",
        y = "P-Value",
        caption = "Note: Y-Axis on negative log(10) scale. \n Dashed line indicates a p-value of 0.05. \n Line of best fit in purple.",
@@ -606,7 +743,7 @@ As defier proportion increases test power increases rapidly. For the larger and 
 simulations_power_subgroup %>% 
   filter(pct_defiers_true > 0) %>% 
   ggplot(aes(x = pct_defiers_true,
-             y = pval_defier,
+             y = pval_holm,
              colour = model)) +
   geom_point(alpha = 0.15,
              aes(colour = model)) +
@@ -615,7 +752,8 @@ simulations_power_subgroup %>%
   geom_smooth(se = TRUE,
               colour = "violetred",
               alpha = 0.5) +
-  scale_x_continuous(limits = c(0, 0.1), labels = scales::percent_format(accuracy = 1)) +
+  scale_x_continuous(limits = c(0, 0.1),
+                     labels = scales::percent_format(accuracy = 1)) +
   theme_minimal() +
   facet_grid(N~model, scales = "free_y") +
   guides(colour = "none") +
@@ -630,14 +768,14 @@ simulations_power_subgroup %>%
 One concern may be that whilst the tests are capable of detecting defiers, this may be driven by defier activity in the tails. That is, the tests may work but only because of extremely "defiant" defiers since we only consider the most extreme defier in each sample. Fortunately, we can turn to each test's respective model predictions and compare estimated number of defiers against the actual number of defiers present in the data. The results are reassuring, as the number of defiers grow the number of predicted defiers grows too. 
 
 ```{r defier_true_vs_estim}
-
 simulations_power_subgroup %>% 
   ggplot(aes(x = n_defiers_true,
              y = n_defiers_estimated,
              colour = model)) +
   geom_point(alpha = 0.15) +
   facet_grid(N~model) +
-  geom_abline(slope = 1, intercept = 0) +
+  geom_abline(slope = 1,
+              intercept = 0) +
   theme_minimal() +
   guides(colour = "none") +
   labs(x = "N True Defiers",
@@ -662,7 +800,7 @@ sim_bin <- simulations_power_subgroup %>%
            gr) %>%
   mutate(n= n()) %>%
   arrange(gr) %>% 
-  mutate(n_rejected = ifelse(pval_defier < 0.05, 1, 0)) %>% 
+  mutate(n_rejected = ifelse(pval_holm < 0.05, 1, 0)) %>% 
   mutate(pct_rejected = sum(n_rejected)/n) 
 
 sim_bin_summ <- simulations_power_subgroup %>% 
@@ -680,7 +818,7 @@ sim_bin_summ <- simulations_power_subgroup %>%
 
 sim_bin %>% 
   na.omit() %>% 
-  filter(pct_defiers_true < 0.35) %>% 
+  filter(pct_defiers_true < 0.25) %>% 
   ggplot(aes(x = gr, y = pct_rejected, colour = model, group = model)) +
   geom_point() + 
   geom_line() +
@@ -704,7 +842,7 @@ sim_bin %>%
 ```{r pval_mean_plot}
 sim_bin %>% 
   na.omit() %>% 
-  filter(pct_defiers_true < 0.35) %>% 
+  filter(pct_defiers_true < 0.25) %>% 
   summarise(m_pval = mean(pval_defier),
          sd_pval = sd(pval_defier)) %>% 
   ggplot(aes(x = gr, y = m_pval, colour = model, group = model)) +
@@ -754,30 +892,38 @@ sim_bin %>%
 ### Individual Heterogeneity
 
 
-Surprisingly the honest causal forest performs poorly in comparison to the saturated first stage test using a completely heterogeneous treatment effect independent of covariates. I'm reluctant to rationalise this behaviour post-hoc. Honest causal forest's behaviour in applied settings is less well understood than a conventional regression model using simple interaction terms but it's still fairly shocking that the predictive power of random forest, widely touted in machine learning competitions such as Kaggle, fails to improve on such a simple OLS model.
+Again, there seems to be large dispersion in estimated $p$-values even under similar data generating processes and defier coverage. As expected, $p$-values fall (i.e. move up the $y$-axis using a negative log scale.) as defier coverage increases.
 ```{r hetero_sim_import}
 
-simulations_power_small <- read.csv("C:/Users/edjee/Dropbox/Ed/power_simulations_hetero_small.csv") %>% 
-  mutate(N = "Small")
+source("simulations/code/hetero_sim.R")
 
-simulations_power_medium <- read.csv("C:/Users/edjee/Dropbox/Ed/power_simulations_hetero_medium.csv") %>% 
-  mutate(N = "Medium")
-
-simulations_power_large <- read.csv("C:/Users/edjee/Dropbox/Ed/power_simulations_hetero_large.csv") %>% 
-  mutate(N = "Large")
-
-simulations_power_indiv <- bind_rows(simulations_power_small,
-                               simulations_power_medium,
-                               simulations_power_large) %>% 
+simulations_power_indiv <- bind_rows(
+                                    simulations_power_hetero_small,
+                                    simulations_power_hetero_medium,
+                                    simulations_power_hetero_large
+                                    ) %>% 
   as_tibble() %>% 
-    mutate(N = factor(N, levels = c("Small", "Medium", "Large")))
+    mutate(N = factor(N, levels = c("Small", "Medium", "Large")),
+           n_comparisons = ifelse(model == "Saturated First Stage", 2^4, NA),
+           n_comparisons = ifelse(model == "Forest" & N == "Small",
+                                  1000^2,
+                                  n_comparisons),
+           n_comparisons = ifelse(model == "Forest" & N == "Medium",
+                                  5000^2,
+                                  n_comparisons),
+           n_comparisons = ifelse(model == "Forest" & N == "Large",
+                                  10000^2,
+                                  n_comparisons))
+
+
+rm(simulations_power_hetero_small,
+   simulations_power_hetero_medium,
+   simulations_power_hetero_large)
 
 simulations_power_indiv <- simulations_power_indiv %>% 
-    mutate(model = tools::toTitleCase(as.character(model)))
-
-rm(simulations_power_small,
-   simulations_power_medium,
-   simulations_power_large)
+  rowwise() %>% 
+  mutate(pval_holm = p.adjust(pval_defier, method = "holm", n = n_comparisons)) %>% 
+  ungroup()
 
 ```
 
@@ -785,12 +931,13 @@ rm(simulations_power_small,
 
 
 ```{r power_indiv_inverse_p}
+
 simulations_power_indiv %>% 
   unite(mod_N, model, N, remove = FALSE) %>% 
-  filter(pval_defier > 1e-300) %>% 
   filter(pct_defiers_true > 0) %>% 
+  filter(pval_holm > 1e-300) %>% 
   ggplot(aes(x = pct_defiers_true,
-             y = pval_defier,
+             y = pval_holm,
              group = mod_N)) +
   geom_point(alpha = 0.15, aes(colour = model)) +
   geom_hline(yintercept = 0.05,
@@ -812,13 +959,14 @@ simulations_power_indiv %>%
 ```
 
 
-Similar to the subgroup heterogeneous simulations, $p$-values swiftly increase in significance as defier proportion increases although at a noticably slower rate than their less heterogeneous counterparts.
+Similar to the subgroup heterogeneous simulations, $p$-values swiftly increase in significance as defier proportion increases even at very low levels of defiance. The honest causal forest's superiority in this context is transparent - the LOESS line of best fit seems to be concave rather than convex, increasing at a faster rate than it's traditional counterpart.
 
 ```{r power_indiv_sim_low_prop}
+
 simulations_power_indiv %>% 
   filter(pct_defiers_true > 0) %>% 
   ggplot(aes(x = pct_defiers_true,
-             y = pval_defier,
+             y = pval_holm,
              colour = model)) +
   geom_point(alpha = 0.15,
              aes(colour = model)) +
@@ -841,9 +989,10 @@ simulations_power_indiv %>%
 
 
 
-A common feature of the individual heterogeneity specification seems to be frequent over reporting of true defier figures - this could, in part, explain some of the discrepancies in test performance when we take the tests to the data since honest causal forest seems particularly prone to this issue.
+A common feature of the individual heterogeneity specification seems to be frequent over reporting of true defier figures - this could, in part, explain some of the discrepancies in test performance when we take the tests to the data since the saturated first stage seems particularly prone to this issue.
 
 ```{r sim_power_indiv_N_N}
+
 simulations_power_indiv %>% 
   ggplot(aes(x = n_defiers_true,
              y = n_defiers_estimated,
@@ -861,9 +1010,10 @@ simulations_power_indiv %>%
 ```
 
 
-Despite misgivings concerning honest causal forest's relative performance both tests, in absolute terms, still perform strongly with almost perfect identification at 10\% defier proportions. The apparent paradox between a noisier DGP and better test performance highlights why comparisons between tests across DGPs should be undertaken with caution. Power is a function of defier magnitude; defier proportion and the size of the error term but only defier proportion and error variance is held constant across specifications.
+Despite misgivings concerning test performance under model misspecification both tests still perform strongly with almost perfect identification at 15\% defier proportions in the larger datasets. The apparent paradox between a noisier DGP and better test performance highlights why comparisons between tests across DGPs should be undertaken with caution. Power is a function of defier magnitude; defier proportion and the size of the error term but only defier proportion and error variance is held constant across specifications.
 
 ```{r power_prop}
+
 
 sim_bin_indiv <- simulations_power_indiv %>% 
   mutate(gr=cut(pct_defiers_true, labels = FALSE, breaks= seq(0, 1, by = 0.01))/100) %>% 
@@ -872,12 +1022,11 @@ sim_bin_indiv <- simulations_power_indiv %>%
            gr) %>%
   mutate(n= n()) %>%
   arrange(gr) %>% 
-  mutate(n_rejected = ifelse(pval_defier < 0.05, 1, 0)) %>% 
+  mutate(n_rejected = ifelse(pval_holm < 0.05, 1, 0)) %>% 
   mutate(pct_rejected = sum(n_rejected)/n) 
 
 sim_bin_indiv %>% 
   na.omit() %>% 
-  filter(pct_defiers_true < 0.35) %>% 
   ggplot(aes(x = gr,
              y = pct_rejected,
              colour = model,
@@ -897,37 +1046,28 @@ sim_bin_indiv %>%
 
 ```
 
-Overall it seems both tests maintain reasonable levels of power under model mispecification issues although the honest causal forest suffers significantly more - again this in part, could help explain the observed divergence between the two tests later.
+Overall it seems both tests maintain reasonable levels of power under model mispecification issues although the saturated first stage suffers a little more - again this in part, could help explain the observed divergence between the two tests later.
 
 ### Non-Linear Heterogeneity
 
 ```{r sim_power_nl_import}
-simulations_power_small <- read.csv("C:/Users/edjee/Dropbox/Ed/power_simulations_non_linear_small.csv") %>% 
-  mutate(N = "Small")
-
-simulations_power_medium <- read.csv("C:/Users/edjee/Dropbox/Ed/power_simulations_non_linear_medium.csv") %>% 
-  mutate(N = "Medium")
-
-simulations_power_large <- read.csv("C:/Users/edjee/Dropbox/Ed/power_simulations_non_linear_large.csv") %>%
-   mutate(N = "Large")
-
-simulations_power_nl <- bind_rows(simulations_power_small,
-                               simulations_power_medium,
-                               simulations_power_large) %>% 
+source("simulations/code/non_linear_sim.R")
+simulations_power_nl <- bind_rows(
+                                  simulations_power_non_linear_small,
+                                  simulations_power_non_linear_medium,
+                                  simulations_power_non_linear_large
+                                  ) %>% 
   as_tibble() %>% 
     mutate(N = factor(N, levels = c("Small", "Medium", "Large"))) 
 
-simulations_power_nl <- simulations_power_nl %>% 
-    mutate(model = tools::toTitleCase(as.character(model)))
-
-rm(simulations_power_small,
-   simulations_power_medium,
-   simulations_power_large)
+rm(simulations_power_non_linear_small,
+   simulations_power_non_linear_medium,
+   simulations_power_non_linear_large)
 ```
 
 
 
-Using the non-linear data generating process the magnitude of $p$-values has increased significantly i.e. $p$-values are much less small compared to the subgroup and individually heterogeneous cases. Now the smallest $p$-values are around $1 \times e^{-35}$ as opposed to $1 \times e^{-250}$ as seen above. Interestingly, the saturated first stage test seems to produce far smaller $p$-values at greater defier proportions than the honest causal forest. With enough data the honest causal forest enjoys a comparative advantage at picking up non-linearities at even the tiniest sign of defiance.
+Using the non-linear data generating process the magnitude of $p$-values has increased significantly i.e. $p$-values are much less small compared to the subgroup and individually heterogeneous cases. Now the smallest $p$-values are around $1 \times e^{-35}$ as opposed to $1 \times e^{-250}$ as seen above. Interestingly, the honest causal forest seems to produce far smaller $p$-values at given defier proportions than the honest causal forest.  The honest causal forest test enjoys a comparative advantage at picking up non-linearities at even the tiniest sign of defiance.
 
 ```{r sim_power_p_inverse}
 simulations_power_nl %>% 
@@ -958,7 +1098,7 @@ simulations_power_nl %>%
 ```
 
 
-In an non-linear context it seems that saturated first stage struggles to detect defiance in small and moderately sized datasets whereas honest causal forest only struggles in the very smallest dataset.
+In a non-linear context it seems that saturated first stage struggles to detect defiance in all three of the datasets considered whereas honest causal forest only struggles in the very smallest dataset.
 ```{r sim_power_low_nl}
 
 simulations_power_nl %>% 
@@ -990,7 +1130,8 @@ simulations_power_nl %>%
 
 
 
-The overestimation of defiers exhibited by the individual heterogeneous effects has vanished and defier estimation seems to be consistent and well behaved throughout. Again, at first glance there's reassuring evidence that the models are accurately estimating the _number_, if not _identity_, of defiers in a dataset and test performance isn't driven by "tail defiance".
+The overestimation of defiers exhibited by the individual heterogeneous effects has vanished and defier estimation using honest causal forest seems to be consistent and well behaved throughout. Again, at first glance there's reassuring evidence that honest causal forest is accurately estimating the _number_, if not _identity_, of defiers in a dataset and test performance isn't driven by "tail defiance". However,
+the saturated first stage model now has the opposite issue - it systematically underestimates the number of defiers in a dataset.
 ```{r simulations_power_N_N_nl}
 simulations_power_nl %>% 
   ggplot(aes(x = n_defiers_true,
@@ -1011,7 +1152,7 @@ simulations_power_nl %>%
 
 
 
-The simulation results suggest the non-linear specification causes the most issues for the tests with small N - this is particularly worrying considering two of the papers used later in the essay have roughly 1400 and 2000 datapoints each. However, at even moderate sized datasets both tests perform admirably. It's remarkable how well the saturated first stage test is able to infer defiance and non-linear heterogeneity even in a DGP with no explicit interaction terms. Again, the honest causal forest's comparative advantage appears to be large N, low defier situations.
+The simulation results suggest the non-linear specification causes the most issues for the tests with small N - this is particularly worrying considering two of the papers used later in the essay have roughly 1400 and 2000 datapoints each. However, at even moderate sized datasets both tests perform admirably. Again, the honest causal forest's comparative advantage appears to be large N, low defier situations however it also holds an absolute advantage when using a non-linear DGP - this is the only DGP considered where honest causal forest outperformed the saturated first stage test in the smallest dataset.
 
 ```{r sim_power_nl}
 
@@ -1052,277 +1193,7 @@ sim_bin_nl %>%
 ```
 
 
-
-
-## Size Simulations
-
-Test size, typically denoted by $\alpha$, is set by the analyst and corresponds to the probability of incorrectly rejecting a true null hypothesis. When performing simultaneous inferences a common concern is that test properties at the individual level, usually an error rate, no longer hold on aggregate. To combat this concern we now examine test size using 2000 simulation draws under the null hypothesis - where no defiers are present. Rather than simulate this for all three datasets I simply use the smallest in order to save on computational cost.
-
-
-```{r size_sims}
-
-run_sim <- FALSE
-if (run_sim) {
-  library(furrr)
-  plan(multisession)
-  
-  simulations_size <- coef_list %>% 
-    map(abs) %>% 
-    future_map_dfr(simulation_func,
-                   force_positive = TRUE,
-                   .options = future_options(globals = c(
-                                                         "run_first_stage_interactions_fast",
-                                                         "find_SEs",
-                                                         "create_fake_data",
-                                                         "simulation_func",
-                                                         "power_test",
-                                                         "sim_first_stage_forest"),
-                                             packages = c("dplyr",
-                                                          "modelr",
-                                                          "margins",
-                                                          "broom",
-                                                          "grf")),
-                   .progress = TRUE)
-  
-  
-  
-  plan(sequential)
-  write.csv(simulations_size, file = "size_simulations_both.csv", row.names = FALSE)
-  # write.csv(simulations_size, file = "size_simulations_both.csv", row.names = FALSE)  
-} else {
-  simulations_size <- readr::read_csv("C:/Users/edjee/Dropbox/Ed/size_simulations_both_large.csv")
-}
-simulations_size <- simulations_size %>% 
-  mutate(model = tools::toTitleCase(model))
-```
-
-Conventionally, under the null hypothesis we'd expect the distribution of $p$-values to be uniformly distributed on the interval 0, 1. However, this is only the case under the __two-sided__ null. Therefore, in this essay we'd expect $p$-values to have greater density near 1 - intuitively, there are many large, positive partial effects, "deep in the null" to quote @westfall, that contribute to this bunching behaviour.
-
-The histogram below reflects this expected behaviour - fortunately, graphically at least, there's little to no evidence that test size isn't adequately controlled.
-```{r size_hist}
-
-simulations_size %>% 
-  ggplot(aes(x = pval_defier,
-             fill = model)) +
-  geom_histogram(colour = "black") +
-  theme_minimal() +
-  facet_wrap(~model) +
-  guides(fill = "none") +
-  labs(x = "P-Value",
-       title = "P-Value Distribution Under One-Sided Null")
-```
-
-
-In the figure below I introduce a visualisation technique possibly unfamiliar to most economists. The empirical CDF of $p$-values is plotted against its theoretical (uniform) quantiles on the negative log scale. The diagonal black line indicates perfect equality between the empirical and theoretical CDF.
-
-Under a two-sided true null hypothesis we'd expect $p$-values to closely follow the line of equality - with a one-sided hypothesis the interpretation is unfortunately a little less clear-cut.
-
-A strong, positive first stage would result in a near horizontal empirical CDF - almost every $p$-value is close to 1 since the hypothesis of negative effects is firmly rejected. If there are defiers present we'd observe the empirical CDF "curve back" towards the null hypothesis or even cross the line of equality. 
-
-This exercise, whilst not offering a definitive answer to defier presence, is useful to an applied researcher. Later in the essay, when we take the tests to the data, we can visualise the strength of the instrument's effect on inducing compliers to take up treatment, in a normalised manner invariant to scale effects, and also get a sense of how this strength varies heterogeneously within the sample or even whether there's initial evidence of defiance.
-
-```{r ecdf_unif_size}
-simulations_size %>% 
-  filter(pct_defiers_true == 0) %>% 
-  ggplot(aes(sample = pval_defier,
-             colour = model)) +
-  stat_qq(distribution = qunif) +
-  geom_abline(intercept = 0, slope = 1) +
-  scale_y_continuous(trans = negative_log_trans(10)) +
-  scale_x_continuous(trans = negative_log_trans(10)) +
-  theme_minimal() +
-  facet_wrap(~model) +
-  guides(colour = "none") +
-  labs(title = "QQ plot of Simulated P-values",
-       caption = "Note: Both axes use a negative log(10) scale.")
-
-```
-
-
-Simulation results clearly show test size $\leq \alpha$ without any additional control procedures. Next, I provide further evidence that a Romano-Wolf adjustment would be too conservative.
-```{r checks_size, results = "asis"}
-simulations_size %>% 
-  rename(Model = model) %>% 
-  group_by(Model) %>% 
-  filter(pval_defier < 0.05) %>% 
-  summarise("Number of Test Draws" = nrow(simulations_size)/2,
-            "Number of Significant Tests" = n(),
-            "Proportion Significant" = `Number of Significant Tests` / `Number of Test Draws`,
-            "Alpha" = 0.05) %>% 
-  gt() %>% 
-  fmt_percent(
-    columns = c("Proportion Significant",
-                "Alpha")
-  ) %>% 
-  tab_header(
-    title = "Size Simulations"
-  )
-
-```
-
-
-### Romano-Wolf
-
-It's difficult to implement Romano and Wolf's resampling multiple adjustment procedure with one-sided tests in R - instead I offer suggestive evidence that the procedure is too conservative when considering one draw of the data generated under a two-sided null hypothesis. Full proof via simulation would require simulating $N$ datasets and resampling each dataset $n$ times to form Romano-Wolf adjusted critical values which is omitted in this essay for computational reasons.
-
-
-```{r romano_wolf_sims}
-
-positive_sim_data <- create_fake_data(N = 1000,
-                 model_betas = rep(0, 10),
-                 force_positive = TRUE)
-
-positive_sim_model <- positive_sim_data %>%
-  select_at(vars(-contains(":"), -`(Intercept)`)) %>% 
-  run_first_stage_interactions_fast(.,
-                                    "D",
-                                    "Z")
-
-anon_function <- function(dummy_arg, data){
-  data %>% 
-    select_at(vars(-contains(":"),
-                   -"(Intercept)")) %>% 
-    resample_bootstrap() %>% 
-    as.data.frame() %>% 
-    run_first_stage_interactions_fast(.,
-                                      "D",
-                                      "Z") %>% 
-    select(t_stat) %>% 
-    pull()
-}
-plan(multisession)
-model_boot <- 1:500 %>% 
-  future_map_dfc(.,
-                 anon_function,
-                 data = positive_sim_data,
-                 .progress = FALSE,
-                 .options = future_options(
-                   globals = c("positive_sim_data",
-                               "run_first_stage_interactions_fast",
-                               "find_SEs"),
-                   packages = c("dplyr",
-                                "modelr",
-                                "margins")
-                 )) %>% 
-  as.matrix()
-plan(sequential)
-adjusted_val <- FWERkControl(test_stat = positive_sim_model$t_stat,
-                             boot_stat = model_boot,
-                             k = 1,
-                             alpha = 0.05)
-
-
-
-
-
-sim_first_stage_forest <- function(dataset){
-  forest_sim <- dataset %>% 
-    select_at(vars(contains("V"), -contains(":"))) %>% 
-    as.matrix() %>% 
-    causal_forest(X = .,
-                  Y = dataset$D,
-                  W = dataset$Z,
-                  num.trees = 4000) %>% 
-    predict(., estimate.variance = TRUE) %>% 
-    as_tibble() %>% 
-    mutate(sigma_hat = sqrt(variance.estimates),
-           prediction_lo = predictions - 1.96*sigma_hat,
-           prediction_hi = predictions + 1.96*sigma_hat,
-           t_stat = predictions / sigma_hat,
-           pval_one_neg = pnorm(t_stat),
-           pval_one_pos = pnorm(-t_stat),
-           row_id = row_number())
-  return(forest_sim)
-}
-
-positive_sim_model_rf <- sim_first_stage_forest(positive_sim_data)
-
-
-anon_function_rf <- function(dummy_arg,
-                             data){
-    data %>% 
-    resample_bootstrap() %>% 
-    as.data.frame() %>% 
-    sim_first_stage_forest(.) %>% 
-    select(t_stat) %>% 
-    pull()
-}
-run_sim <- FALSE
-if (run_sim){
-  plan(multisession)
-  model_boot_rf <- 1:500 %>% 
-    future_map_dfc(.,
-                   anon_function_rf,
-                   data = positive_sim_data,
-                   .progress = TRUE,
-                   .options = future_options(
-                     globals = c("positive_sim_data",
-                                 "sim_first_stage_forest"),
-                     packages = c("dplyr",
-                                  "modelr",
-                                  "grf")
-                   )) %>% 
-    as.matrix()
-  
-  
-  plan(sequential)
-  # write.csv(model_boot_rf, "C:/Users/edjee/Dropbox/Ed/romano_wolf_rf.csv",
-  #           row.names = FALSE)
-} else {
-  model_boot_rf <- readr::read_csv("C:/Users/edjee/Dropbox/Ed/romano_wolf_rf.csv") %>% 
-    as.matrix()
-}
-
-adjusted_val_rf <- FWERkControl(test_stat = positive_sim_model_rf$t_stat,
-                             boot_stat = model_boot_rf,
-                             k = 1,
-                             alpha = 0.05)
-
-
-rf_row <- bind_cols(
-  adjusted_val_rf$CV %>% 
-    enframe() %>% 
-    select("Adjusted Critical Value" = value),
-  positive_sim_model_rf %>% 
-    summarise("Original Critical Value" = qt(0.95, df = nrow(positive_sim_data) - 10),
-              "Max Test Statistic" = max(t_stat),
-              "Proportion Significant" = sum(ifelse(t_stat > 1.65, 1, 0))/nrow(positive_sim_data),
-              "Test" = "Causal Forest")
-)
-
-sfs_row <- bind_cols(
-  adjusted_val$CV %>% 
-    enframe() %>% 
-    select("Adjusted Critical Value" = value),
-  positive_sim_model %>% 
-  summarise("Original Critical Value" = qt(0.95, df = nrow(positive_sim_data) - 10),
-            "Max Test Statistic" = max(t_stat),
-            "Proportion Significant" = sum(ifelse(t_stat > 1.65, 1, 0))/nrow(positive_sim_data),
-            "Test" = "Saturated First Stage"))
-
-
-bind_rows(sfs_row,
-          rf_row) %>% 
-  gt() %>% 
-  fmt_number(columns = c("Adjusted Critical Value",
-                         "Original Critical Value",
-                         "Max Test Statistic"),
-             decimals = 2) %>% 
-  fmt_percent(
-    columns = "Proportion Significant"
-  ) %>%
-    tab_header(
-    title = "Romano-Wolf Adjustment"
-  ) 
-
-
-
-```
-
-&nbsp;
-
-
-If, under the null, one draw of the data with 1000 observations led to 5\% of test statistics appearing significant we'd need to control the family wise error rate since we'd certainly reject the null hypothesis for every subsequent draw of the data - i.e. we wish to control the error rate at the test level and not observation level. Since only `r sfs_row$"Proportion Significant"*100`\% and `r rf_row$"Proportion Significant"*100`\% of the observations in a given test are significant and the adjusted critical value is far greater than the largest test statistic we can conclude with reasonable certainty that additional control isn't required. 
+Overall, both methods fare well under a range of data generating processes. Each test has individual strengths and weaknesses suggesting a thorough investigation of defiance should include both.  
 
 
 # Empirical Results
@@ -1608,7 +1479,7 @@ df_final4_cleaned <- read_dta("Angrist and Lavy Grade 4.dta") %>%
 
 In this context, a complier is a couple that are more likely to have an additional child if their current children have the same-sex - there is a well documented gender mix preference amongst parents. However, for the LATE estimate to be valid there cannot be any couples that are induced not to have an additional child if their current children are the same-sex. 
 
-A plausible explanation is that there are economies of scale to raising two boys or two girls that are potentially lost when a third child of ex-ante unknown gender is raised. 
+A plausible explanation for potential defiance could be the presence of economies of scale when raising same-sex children that are potentially lost when considering a third child of ex-ante unknown gender. In this case, couples may be induced to stop having children if both their current off-spring are of the same gender. 
 
 ```{r run_first_stage_AE}
 
@@ -1654,113 +1525,33 @@ first_stage_interactions_80 <- AE_data_80 %>%
   run_first_stage_interactions_fast(dataset = .,
                                     dependent_variable = "morekids",
                                     instrument = "samesex",
-                                    vcov_func = vcovHC) %>% 
+                                    vcov_func = vcovHC,
+                                    n_tiles = 3) %>% 
   mutate(dataset = "1980") %>% 
-  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm,  dataset, dydx_lo, dydx_hi, t_stat)
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, dataset, dydx_lo, dydx_hi, t_stat, n_comparisons, pval_neg_holm)
 first_stage_interactions_90 <- AE_data_90 %>% 
   run_first_stage_interactions_fast(dataset = .,
                                    dependent_variable = "morekids",
                                    instrument = "samesex",
-                                   vcov_func = vcovHC) %>% 
+                                   vcov_func = vcovHC,
+                                   n_tiles = 3) %>% 
   mutate(dataset = "1990") %>% 
-  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm, dataset, dydx_lo, dydx_hi, t_stat)
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, dataset, dydx_lo, dydx_hi, t_stat, n_comparisons, pval_neg_holm) 
 
-first_stage_interactions_AE <- bind_rows(first_stage_interactions_90, first_stage_interactions_80) 
+first_stage_interactions_AE <- bind_rows(
+  first_stage_interactions_90,
+  first_stage_interactions_80) 
 
+## Number of corrections (theoretical)= 2^6  * 3^4 = 5184 (I think)
 
+## Adjusting confidence intervals for multiple comparisons
+
+first_stage_interactions_AE <- first_stage_interactions_AE %>% 
+  mutate(dydx_lo_a = dydx_instrument - SE_dydx_instrument*qt(1-(0.05/2)/n_comparisons, df = n()/2),
+         dydx_hi_a = dydx_instrument +  SE_dydx_instrument*qt(1-(0.05/2)/n_comparisons, df = n()/2)) 
 
 ```
 
-
-```{r old_stuff, eval = FALSE, echo = FALSE}
-
-run_first_stage_interactions_fast_slow_SE <- function(dataset, dependent_variable, instrument){
-  dataset <- dataset %>% 
-    rename("instrument" = instrument)
-  model_formula <- as.formula(paste0(dependent_variable,  "~ ", "instrument", "*."))
-  first_stage_fit <- lm(data = dataset, formula = model_formula)
-  degrees_freedom <- first_stage_fit$df.residual
-  dydx_margins <- dydx(data = dataset,
-                       model = first_stage_fit,
-                       variable = "instrument") %>% pull()
-  dataset_unique <- dataset %>% 
-    select(-dependent_variable, -instrument) %>% 
-    distinct() %>% 
-    mutate(instrument = TRUE)
-  first_stage_margins <- dydx(model = first_stage_fit, data = dataset_unique, variable = "instrument") 
-  df_margins <- bind_cols(first_stage_margins %>% 
-                            select(contains("dydx")),
-                          dataset_unique) %>% 
-    as_tibble()
-  df_margins$SE_dydx_instrument <- find_SEs_slow(dataset_unique, vcov(first_stage_fit), instrument)
-  
-  df_margins <- df_margins %>% 
-    mutate(dydx_lo = dydx_instrument - qt(0.975, degrees_freedom) * SE_dydx_instrument,
-           dydx_hi = dydx_instrument + qt(0.975, degrees_freedom) * SE_dydx_instrument,
-           t_stat = dydx_instrument/SE_dydx_instrument,
-           pval_one_neg = pt(t_stat, degrees_freedom))
-  return(df_margins)
-}
-
-find_SEs_slow <- function(model_data_no_y, model_vcov, instrument){
-  model_data_no_y <- model_data_no_y %>% 
-    rename("instrument" = instrument)
-  model_formula <- as.formula(paste0("~", "instrument", "*."))
-  
-  model_matrix <- model_data_no_y %>% 
-    mutate(instrument = 1) %>% 
-    model.matrix(model_formula, data = .)
-  
-  gradient_matrix_kinda <- model_matrix %>%
-    as_tibble() %>% 
-    distinct() %>% 
-  mutate_at(vars(-contains(":")), ~(. = 0)) %>% 
-    mutate(instrument = 1) %>% 
-  as.matrix()
-  
-  vcov_dydx_intermediate <- Rfast::mat.mult(gradient_matrix_kinda, model_vcov)
-  vcov_dydx <- Rfast::mat.mult(vcov_dydx_intermediate, Rfast::transpose(gradient_matrix_kinda))
-  SE_dydx <- sqrt(diag(vcov_dydx))
-  return(SE_dydx)
-    
-} 
-
-
-run_first_stage_interactions_slow <- function(dataset, dependent_variable, instrument){
-  dataset <- dataset %>% 
-    rename("instrument" = instrument)
-  model_formula <- as.formula(paste0(dependent_variable,  "~ ", "instrument", "*."))
-  first_stage_fit <- lm(data = dataset, formula = model_formula)
-  degrees_freedom <- first_stage_fit$df.residual
-  dydx_margins <- dydx(data = dataset,
-                       model = first_stage_fit,
-                       variable = "instrument") %>% pull()
-  dataset_unique <- dataset %>% 
-    select(-dependent_variable, -instrument) %>% 
-    distinct() %>% 
-    mutate(instrument = TRUE)
-  first_stage_margins <- margins(first_stage_fit, data = dataset_unique, variables = "instrument", unit_ses = TRUE) 
-  df_margins <- bind_cols(first_stage_margins %>% 
-                            select(contains("dydx")),
-                          dataset_unique) %>% 
-    as_tibble()
-  df_margins <- df_margins %>% 
-    mutate(dydx_lo = dydx_instrument - qt(0.975, degrees_freedom) * SE_dydx_instrument,
-           dydx_hi = dydx_instrument + qt(0.975, degrees_freedom) * SE_dydx_instrument,
-           t_stat = dydx_instrument/SE_dydx_instrument,
-           pval_one_neg = pt(t_stat, degrees_freedom))
-  return(df_margins)
-}
-
-
-
-test <- test_data %>% 
-  run_first_stage_interactions_fast_slow_SE(dataset = ., 
-                                    dependent_variable = "morekids",
-                                    instrument = "samesex")
-
-all_equal(first_stage_interactions, test)
-```
 
 @Angrist_Evans run a first stage regression of the form:
 $$
@@ -1769,7 +1560,7 @@ $$
 where $X_i$ is a vector of controls including _age_; _age at first birth_; indicators for _Boy 1st_, _Boy 2nd_, _Black_, _Hispanic_, and _Other race_. In addition to this, I include controls for parental years of schooling and parental weight.
 
 
-The distribution of estimated partial effects is plotted below. Instrument partial effects seem to be particularly homogeneous; there's very little dispersion around mean partial effects of `r library(dplyr); first_stage_interactions_AE %>% group_by(dataset) %>% summarise(mean(dydx_instrument)) %>% pull() %>% round(. ,3)` respectively. Promisingly, results below zero appear to be sparse. 
+The distribution of estimated partial effects is plotted below. Instrument partial effects seem to be particularly homogeneous; there's very little dispersion around mean partial effects of `r library(dplyr); first_stage_interactions_AE %>% group_by(dataset) %>% summarise(mean(dydx_instrument)) %>% pull() %>% round(. ,3)` respectively. Promisingly, results below zero appear to be nonexistent. 
 
 ```{r plotting_first_stage_interactions}
 colour_pair <- c("hotpink", "darkorange")
@@ -1788,7 +1579,7 @@ first_stage_interactions_AE %>%
 
 
 
-Ranking instrument partial effects and corresponding confidence intervals shows two things. First, the vast majority of effects are positive but there are some negative effects - the precision with which these effects are estimated will determine our ability to reject the null hypothesis of no defiers. Second, effects are estimated with large differences in precision. This makes sense, if there's one subgroup with less data or less precisely estimated effects this will show up in the uncertainty of partial effect estimates.   
+Ranking instrument partial effects and corresponding confidence intervals shows two things. First, all the partial effects estimated are positive. Second, effects are estimated with large differences in precision. This makes sense, if there's one subgroup with less data or less precisely estimated effects this will show up in the uncertainty of partial effect estimates.   
 
 ```{r AE_fs_ints_ranked}
 first_stage_interactions_AE %>% 
@@ -1796,7 +1587,7 @@ first_stage_interactions_AE %>%
   sample_n(10000) %>% 
   arrange(dydx_instrument) %>% 
   mutate(rank = row_number()) %>% 
-  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo, ymax = dydx_hi)) +
+  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo_a, ymax = dydx_hi_a)) +
   geom_point(aes(colour = dataset)) +
   geom_ribbon(alpha = 0.2) +
   theme_minimal() +
@@ -1826,6 +1617,7 @@ first_stage_interactions_AE %>%
 
 first_stage_interactions_AE %>% 
   group_by(dataset) %>% 
+  sample_n(10000) %>% 
   ggplot(aes(sample = pval_one_neg, colour = dataset)) +
   stat_qq(distribution = qunif) +
   geom_abline(intercept = 0, slope = 1) +
@@ -1843,7 +1635,14 @@ first_stage_interactions_AE %>%
 
 ```
 
-Moving to the quantile-quantile plot perfectly demonstrates the behaviour discussed earlier - there's sizeable horizontal CDF behaviour and curving back towards the line of equality. It seems reasonable to conclude that there's a large amount of compliers but some initial evidence, at least, of defiance.  
+Above is the quantile-quantile plot of unadjusted $p$-values. The plot displays the sample versus theoretical quantiles of partial effect $p$-values using a uniform distribution. Under a two-sided null hypothesis $p$-values will be uniformly distributed and therefore the empirical CDF will be a straight line from 0 to 1 with slope 1. 
+
+This method of visualisation is popular in Genome Wide Association Studies (GWAS) when displaying thousands of $p$-values. Typically analysts are interested in the hypotheses corresponding to small $p$-values (i.e. statistically significant $p$-values) and therefore both axes are inverted on a log-log scale. This means the "most significant" $p$-values will appear at the top right of the plots.
+
+$p$-values hugging the line of equality indicate evidence in favour of the null hypothesis. We'd expect a strong first stage to exhibit near horizontal  movement to the right - there are many more large $p$-values in the sample than we'd expect theoretically under the null. Therefore, in this essay evidence of defiance would appear as a horizontal line, due to strong first stages in all papers considered, followed by curving back towards or even past the line of equality. 
+
+This tool is useful for two reasons - it displays the strength of the first stage but also evidence of defiance in a scale invariant manner. 
+In Angrist and Evans' paper we see both examples to a degree. In the 1980 sample there's a strong first stage with no evidence of defiance. The 1990 sample exhibits a little curve back because some partial effects are smaller and closer to 0 than the others, but no evidence of actual defiance - the smallest $p$-values are far from reasonable levels of statistical significance.  
 
 ## Maimonides' Rule
 
@@ -1855,42 +1654,58 @@ $$
 where predicted class size is the class size according to Maimonides' rule. Due to the difficulties of accurately identifying interaction effects with limited data I choose to use the full sample (parametric fuzzy RDD) rather than the discontinuity sample with only approximately 400 observations. 
 
 
-It's hard to argue that defiers are likely to be present in this dataset, particularly with the covariates available, or even to conceptualise under what circumstances a defiant class/school could occur. 
+
+In the context of Angrist and Lavy's research design, defiance would require that the predicted class size fall, due to Maimonides' essentially arbitrary cut-off, would lead to an increase in class size rather than a decrease. Perhaps upon exceeding the cut off a school principal decides that class sizes' are already breaking Maimonides' rule therefore more children might as well be added to a class to economise on resources. 
+
+It's hard to argue that defiers are likely to be present in this dataset, particularly with the covariates available. Furthermore, the dataset only contains approximately 2,400 datapoints so simulations suggest test power is relatively low. 
 
 
 ```{r maim_FS}
-first_stage_interactions_maim_5 <- df_final5_cleaned %>% 
-  select(classize,
+ 
+
+
+
+first_stage_interactions_maim_5 <-  df_final5_cleaned %>% 
+    select(classize,
          tipuach,
          c_size,
-         c_size_squared,
          func1) %>% 
   run_first_stage_interactions_fast(dataset = .,
                                     dependent_variable = "classize",
                                     instrument = "func1",
-                                    vcov_func = sandwich::vcovCL,
-                                    cluster = df_final5_cleaned$classid) %>% 
+                                    vcov_func = vcovCL,
+                                    cluster = df_final5_cleaned$classid,
+                                    n_tiles = 3) %>% 
   mutate(dataset = "Fifth Grade") %>% 
-  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm,  dataset, dydx_lo, dydx_hi, t_stat)
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, dataset, dydx_lo, dydx_hi, t_stat, pval_neg_holm, n_comparisons)
 
 first_stage_interactions_maim_4 <- df_final4_cleaned %>% 
   select(classize,
          tipuach,
          c_size,
-         c_size_squared,
          func1) %>% 
   run_first_stage_interactions_fast(dataset = .,
                                    dependent_variable = "classize",
                                    instrument = "func1",
                                    vcov_func = sandwich::vcovCL,
-                                   cluster = df_final4_cleaned$classid) %>% 
+                                   cluster = df_final4_cleaned$classid,
+                                   n_tiles = 3) %>% 
   mutate(dataset = "Fourth Grade") %>% 
-  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm, dataset, dydx_lo, dydx_hi, t_stat)
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, dataset, dydx_lo, dydx_hi, t_stat, pval_neg_holm, n_comparisons)
 
 first_stage_interactions_maimonides <- bind_rows(first_stage_interactions_maim_5, first_stage_interactions_maim_4) 
+
+
+# N comparisons = 3^2 = 9
+
+first_stage_interactions_maimonides <- first_stage_interactions_maimonides %>% 
+    mutate(dydx_lo_a = dydx_instrument - SE_dydx_instrument*qt(1-(0.05/2)/n_comparisons, df = n()/2),
+         dydx_hi_a = dydx_instrument +  SE_dydx_instrument*qt(1-(0.05/2)/n_comparisons, df = n()/2)) 
+
+
 ```
 
-The distribution of instrument partial effects using Maimonides' rule appear to be definitive; there's no evidence of defiers in either fourth or fifth grade classes. Ranking the instrument partial effects leads to very similar conclusions - in fact, there are no estimated defiers in either dataset.
+The distribution of instrument partial effects using Maimonides' rule appear to be definitive; there's no evidence of defiers in either fourth or fifth grade classes. Ranking the instrument partial effects leads to very similar conclusions - in fact, there are no estimated defiers in either dataset. There are less partial effects estimated using Angrist and Lavy's dataset since there are fewer covariates available which leads to sparsity of estimated effects and discrete jumps plotted below.
 
 ```{r maim_plot}
 first_stage_interactions_maimonides %>% 
@@ -1917,14 +1732,14 @@ first_stage_interactions_maimonides %>%
 
 
 
-The quantile-quantile plot is near horizontal throughout and any indication of curving back towards equality pales in comparison to the same-sex instrument in @Angrist_Evans's dataset - curving back here is more a function of axes scale and plotted on the same scale as @Angrist_Evans the $p$-value CDF would appear horizontal.
+The quantile-quantile plot is horizontal throughout, again, indicative of a strong first stage with no evidence of defiers. 
 
 ```{r maim_qq_fs}
 first_stage_interactions_maimonides %>% 
   group_by(dataset) %>% 
   arrange(dydx_instrument) %>% 
   mutate(rank = row_number()) %>% 
-  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo, ymax = dydx_hi)) +
+  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo_a, ymax = dydx_hi_a)) +
   geom_point(aes(colour = dataset)) +
   geom_ribbon(alpha = 0.2) +
   theme_minimal() +
@@ -1942,8 +1757,8 @@ first_stage_interactions_maimonides %>%
   stat_qq(distribution = qunif) +
   geom_abline(intercept = 0, slope = 1) +
   theme_minimal() +
-  scale_x_continuous(trans=negative_log_trans(10)) +
-  scale_y_continuous(trans=negative_log_trans(10)) +
+  scale_x_continuous(trans=negative_log_trans(10), limits = c(1, 0.000001)) +
+  scale_y_continuous(trans=negative_log_trans(10), limits = c(1, 0.000001)) +
   labs(title = "QQ plot of P-values - Maimonides' Instrument",
        caption = "Note: Both axes negative log(10) scale. 
        \n Standard errors clustered by class.") +
@@ -1979,12 +1794,19 @@ first_stage_interactions_ADH_manu <- df_china %>%
                                     instrument = "d_tradeotch_pw_lag",
                                     weights = df_china$timepwt48,
                                     vcov_func = vcovCL,
-                                    cluster = df_china$statefip) %>% 
+                                    cluster = df_china$statefip,
+                                    n_tiles = 3) %>% 
   mutate(dataset = "ADH") %>% 
-  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, pval_holm,  dataset, dydx_lo, dydx_hi, t_stat)
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg,  dataset, dydx_lo, dydx_hi, t_stat, pval_neg_holm, n_comparisons)
 
+# N_comparisons theoretical: 3^7 * 2 = 4374, empirically 571
+
+first_stage_interactions_ADH_manu <- first_stage_interactions_ADH_manu %>% 
+    mutate(dydx_lo_a = dydx_instrument - SE_dydx_instrument*qt(1-(0.05/2)/n_comparisons, df = n()),
+         dydx_hi_a = dydx_instrument +  SE_dydx_instrument*qt(1-(0.05/2)/n_comparisons, df = n())) 
 
 ```
+
 
 
 @Autor_Dorn_Hanson's dataset is by far the smallest considered in the essay so simulation results suggest test power will be relatively low and the saturated first stage test should have a comparative advantage over the causal forest test used next. However, even with this caveat the distribution of instrument partial effects seems to display clear presence of defiance.
@@ -2011,13 +1833,13 @@ first_stage_interactions_ADH_manu %>%
 ```
 
 
-This seems to be the most "defiant dataset" yet with a large amount of defiers present in the negative tail. Estimates seem to be relatively precisely estimated with little variation between partial effect precision.
+This seems to be the most "defiant dataset" yet with a large amount of defiers present in the negative tail. Estimates seem to be relatively precisely estimated with little variation between partial effect precision. However, there's still too much uncertainty to ddefinitively conclude defiers are present in Autor, Dorn and Hanson's dataset. Therefore, whilst the model identifies potential defiers, we are unable to conclude with statistical certainty that the monotonicity assumption fails.
 
 ```{r ADH_fs_rank}
 first_stage_interactions_ADH_manu %>% 
   arrange(dydx_instrument) %>% 
   mutate(rank = row_number()) %>% 
-  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo, ymax = dydx_hi)) +
+  ggplot(aes(x = rank, y = dydx_instrument, ymin = dydx_lo_a, ymax = dydx_hi_a)) +
   geom_point(aes(colour = dataset)) +
   geom_ribbon(alpha = 0.2) +
   theme_minimal() +
@@ -2030,7 +1852,7 @@ first_stage_interactions_ADH_manu %>%
 ```
 
 
-The quantile-quantile plot shows reversion to the line of equality and the smallest $p$-value will clearly be significant at standard levels of significance.
+The quantile-quantile plot shows reversion to the line of equality and the smallest $p$-value will clearly be significant at standard levels of significance _before_ multiple comparison adjustments. The QQ plot suggests ADH's first stage isn't particularly strong - the horizontal $p$-value line makes up a relatively small proportion of $p$-values and there's a whip-like curving back indicative of defier presence.  
 ```{r ADH_fs_qq}
 first_stage_interactions_ADH_manu %>% 
   ggplot(aes(sample = pval_one_neg, colour = dataset)) +
@@ -2084,6 +1906,7 @@ first_stage_summary <- first_stage_results %>%
             n = n(),
             pct_defiers = estimated_defiers / n,
          defier_pval = min(pval_one_neg),
+         defier_pval_adjusted = min(pval_neg_holm),
          defier_tstat = min(t_stat)) %>% 
   ungroup() %>% 
   mutate(dataset = factor(dataset,
@@ -2092,26 +1915,29 @@ first_stage_summary <- first_stage_results %>%
                                      "Fourth Grade",
                                      "Fifth Grade",
                                      "ADH")))
+
 adjusted_p_vals <- first_stage_summary %>% 
   filter(paper == "Same-Sex") %>%
-  mutate(p_adj = p.adjust(defier_pval, "holm")) %>%
+  mutate(p_adj = p.adjust(defier_pval_adjusted, "holm")) %>%
   select(p_adj) %>% 
   pull() %>% 
   round(., 3)
 ```
 
-In conclusion, the saturated first stage test using the three papers shows mixed results.
-There's no evidence of defiance in @Angrist_Lavy's estimates of class size and grades and with 2000 observations we can be reasonably confident of test power - indeed, in this range we'd expect the saturated first stage test to excel in comparison to its machine learning cousin.
+In conclusion, the saturated first stage test using the three papers shows similar results. There are no estimated defiers in the first two papers considered and only approximately 6\% in Autor, Dorn and Hanson's paper. Even without any multiple comparison adjustments we cannot reject the null of no defiance in Autor, Dorn and Hanson's paper with a $p$-value of 0.052. Furthermore, after controlling for multiple comparison adjustments, it's clear that evidence of defiance is statistically insignificant.
+
+
+The evidence in favour of the null using Maimonides' rule and the same-sex instrumental variables strategy is particularly strong - both adjusted and unadjusted $p$-values are particularly large at 1 or 0.611 in the 1990 same-sex sample.
 
 
 ```{r}
-
 colnames(first_stage_summary) <- c("Paper",
                                    "Dataset",
                                    "Defiers",
                                    "N",
                                    "% Defier",
                                    "P-Value",
+                                   "Adjusted P-Value",
                                    "T-Stat")
 
 temp_df <- as_tibble(cbind(nms = names(first_stage_summary), t(first_stage_summary)))
@@ -2162,18 +1988,8 @@ temp_df %>%
 rm(temp_df)
 ```
 
-The same-sex instrument estimates are variable.  On the one hand we can reject the null of no defiance at the 5\% significance level for the 1980 census data sample but not at 1\%; whilst we can't reject the null for the 1990 sample at even 10\% significance. A simple multiple comparison adjustment such as Holm-Bonferroni will lead to $p$-values of `r adjusted_p_vals`, respectively and we fail to reject the null hypothesis of no defiance. The $p$-values reported in the table can be interpreted as the probability, under the null of no defiers, of observing a weakly more extreme defier in the sample.
 
-@Angrist_Evans's dataset is very large, whilst we might be confident in the power of the test it would probably be unwise to suggest that defiance of 0.05\% is enough to invalidate their identification strategy - especially when these defiers are so imprecisely estimated.
-
-Meanwhile, @Autor_Dorn_Hanson's identification strategy may be suspect - almost 7\% of the dataset are estimated to be defiers, although formally we cannot reject the null hypothesis at the 5\% significance level.
-
-Overall, it would seem that the saturated first stage test is unable to detect the presence of defiers in the datasets considered. 
-
-
-
-
-
+The $p$-values reported in the table can be interpreted as the probability, under the null of no defiers, of observing a weakly more extreme defier in the sample. Both Angrist and Lavy's and Autor, Dorn and Hanson's datasets are relatively small in comparison to the census data used by Angrist and Evans where the evidence in favour of the null seems rather definitive. Overall, it would seem that the saturated first stage test is unable to detect the presence of defiers in the datasets considered. 
 
 # Honest Causal Forest Test
 
@@ -2246,15 +2062,17 @@ tau_hat_results <- tau_hat_oob_AE %>%
   mutate(sigma_hat = sqrt(variance.estimates),
          prediction_lo = predictions - 1.96*sigma_hat,
          prediction_hi = predictions + 1.96*sigma_hat,
+         prediction_lo_a = predictions - sigma_hat*qt(1-(0.05/2)/(n()^2), df = n()),
+         prediction_hi_a = predictions + sigma_hat*qt(1-(0.05/2)/(n()^2), df = n()), 
          t_stat = predictions / sigma_hat,
          critical_value = qt(0.95, N_obs - 13, lower.tail = FALSE),
          pval = pt(t_stat, df = N_obs - 13),
-         pval_holm = p.adjust(pval, method = "holm"),
+         pval_holm = p.adjust(pval, method = "holm", n = n()^2),
          reject_H0 = ifelse(pval_holm < 0.05, 1, 0),
          rank = row_number())
 
 tau_hat_results %>% 
-  ggplot(aes(x = rank, y = predictions, ymin = prediction_lo, ymax = prediction_hi)) + 
+  ggplot(aes(x = rank, y = predictions, ymin = prediction_lo_a, ymax = prediction_hi_a)) + 
   geom_point(aes(colour = dataset)) +
   geom_ribbon(alpha = 0.1) +
   theme_minimal() +
@@ -2269,7 +2087,7 @@ tau_hat_results %>%
 
 
 
-The QQ plot of $p$-values in the 1990 sample almost perfectly fits the line of equality followed by movement above the line of equality at the 0.001th theoretical quantile. The causal forest method produces slightly different results for the 1980 sample. Here there's little evidence of the horizontal CDF we've grown to expect and limited evidence of defiers, in stark contrast to the 1990 sample.
+The QQ plot of $p$-values in the 1990 sample almost perfectly fits the line of equality followed by movement above the line of equality at the 0.01th theoretical quantile. The causal forest method produces slightly different results for the 1980 sample. Here there's little evidence of the horizontal CDF we've grown to expect and limited evidence of defiers, in stark contrast to the 1990 sample.
 
 Such a large difference in results between tests and within tests between samples is puzzling particularly after the power simulations displayed such similar results under multiple data generating scenarios. Furthermore, Angrist and Evan's  use a census dataset with over 100,000 observations - whilst I don't conduct any simulations with this many observations - it's hard to rationalise such a large departure in test results.     
 ```{r}
@@ -2290,7 +2108,7 @@ tau_hat_results %>%
 ```
 
 
-## Maimonides Rule
+## Maimonides' Rule
 
 Estimated instrument effects are diffuse and, again, not strictly positive in the Maimonides' rule instrument variable strategy. This is even more puzzling than the @Angrist_Evans's case discussed earlier since our first stage test found no evidence of defiance - not only were there no statistically significant defiers, there were no defiers detected at all. 
 
@@ -2356,10 +2174,12 @@ tau_hat_results_maimonides <- tau_hat_oob_maimonides %>%
   mutate(sigma_hat = sqrt(variance.estimates),
          prediction_lo = predictions - 1.96*sigma_hat,
          prediction_hi = predictions + 1.96*sigma_hat,
+         prediction_lo_a = predictions - sigma_hat*qt(1-(0.05/2)/(n()^2), df = n()),
+         prediction_hi_a = predictions + sigma_hat*qt(1-(0.05/2)/(n()^2), df = n()),
          t_stat = predictions / sigma_hat,
          critical_value = qt(0.95, N_obs - 4, lower.tail = FALSE),
          pval = pt(t_stat, df = N_obs - 13),
-         pval_holm = p.adjust(pval, method = "holm"),
+         pval_holm = p.adjust(pval, method = "holm", n = n()^2),
          reject_H0 = ifelse(pval_holm < 0.05, 1, 0),
          rank = row_number())
 ```
@@ -2371,8 +2191,8 @@ The relatively small dataset, where we know the saturated first stage test outpe
 tau_hat_results_maimonides %>% 
   ggplot(aes(x = rank,
              y = predictions,
-             ymin = prediction_lo,
-             ymax = prediction_hi)) + 
+             ymin = prediction_lo_a,
+             ymax = prediction_hi_a)) + 
   geom_point(aes(colour = dataset)) +
   geom_ribbon(alpha = 0.1) +
   theme_minimal() +
@@ -2454,15 +2274,17 @@ tau_hat_results_ADH <- tau_hat_oob_ADH %>%
   mutate(sigma_hat = sqrt(variance.estimates),
          prediction_lo = predictions - 1.96*sigma_hat,
          prediction_hi = predictions + 1.96*sigma_hat,
+         prediction_lo_a = predictions - sigma_hat*qt(1-(0.05/2)/(n()^2), df = n()),
+         prediction_hi_a = predictions + sigma_hat*qt(1-(0.05/2)/(n()^2), df = n()),
          t_stat = predictions / sigma_hat,
          critical_value = qt(0.95, N_obs - 12, lower.tail = FALSE),
          pval = pt(t_stat, df = N_obs - 13),
-         pval_holm = p.adjust(pval, method = "holm"),
+         pval_holm = p.adjust(pval, method = "holm", n = n()^2),
          reject_H0 = ifelse(pval_holm < 0.05, 1, 0),
          rank = row_number())
 
 tau_hat_results_ADH %>% 
-  ggplot(aes(x = rank, y = predictions, ymin = prediction_lo, ymax = prediction_hi)) + 
+  ggplot(aes(x = rank, y = predictions, ymin = prediction_lo_a, ymax = prediction_hi_a)) + 
   geom_point(aes(colour = dataset)) +
   geom_ribbon(alpha = 0.1) +
   theme_minimal() +
@@ -2495,7 +2317,7 @@ tau_hat_results_ADH %>%
 
 ## Results
 
-As we've seen, the honest causal forest results are an almost mirror opposite to the saturated first stage results. The only model with no detected defiers is @Autor_Dorn_Hanson's whereas there's strong evidence of defiers in evey other dataset.
+As we've seen, the honest causal forest estimates are an almost mirror opposite to the saturated first stage results. The only model with no detected defiers is @Autor_Dorn_Hanson's whereas the model identifies a large number of defiers in every other dataset.
 
 ```{r forest_summm, results = "asis"}
 tau_hat_results_all <- suppressWarnings(bind_rows(
@@ -2524,14 +2346,7 @@ tau_hat_results_all <- suppressWarnings(bind_rows(
 
 
 
-tau_hat_summary <- tau_hat_results_all %>% 
-  group_by(paper,
-           dataset) %>% 
-  summarise(estimated_defiers = sum(ifelse(predictions < 0, 1, 0)),
-            n = n(),
-            pct_defiers = 100*estimated_defiers/n,
-         defier_pval = min(pval),
-         defier_tstat = min(t_stat))
+
 
 tau_hat_summary <- tau_hat_results_all %>% 
   group_by(paper,
@@ -2540,6 +2355,8 @@ tau_hat_summary <- tau_hat_results_all %>%
             n = n(),
             pct_defiers = estimated_defiers / n,
          defier_pval = min(pval),
+         defier_pval_adjusted = min(pval_holm),
+         
          defier_tstat = min(t_stat)) %>% 
   ungroup() %>% 
   mutate(dataset = factor(dataset,
@@ -2554,6 +2371,7 @@ colnames(tau_hat_summary) <- c("Paper",
                                    "N",
                                    "% Defier",
                                    "P-Value",
+                                    "Adjusted P-Value",
                                    "T-Stat")
 
 
@@ -2608,17 +2426,22 @@ rm(temp_df)
 
 ```
 
+ We know that the honest causal forest has an extreme test size problem when multiple comparisons aren't adjusted for, therefore it's hardly surprising that the model predicts a large number of defiers. Fortunately, after multiple comparison adjustments it's clear that none of the estimated defiers are precisely estimated enough to reject the null hypothesis of no defiance.
+ 
+ However, the heterogeneous point estimates producing so many defiers is a little troubling. Honest causal forest is a relatively new econometric tool but it's still shocking how many defiers it predicts. Not only is there sizable variation between tests within datasets, when comparing the saturated first stage defier predictions with honest causal forest which only found defiers in ADH's dataset, but also there's a large divergence within tests across samples - it's hard to believe that approximately only 10\% of the census population were defiers in 1980 but within 10 years this figure rises to 50\% of the population. Furthermore, if defiers truly make up half the population we'd expect Angrist and Evans to face a severe weak instruments problem which isn't borne out in reality. 
+ 
+The same-sex 1990 sample demonstrates just how important the adjustment process is - the $p$-value is corrected from a value insignificantly different from 0 at 4 decimal places to 1.
 
-Even after taking into account the increased uncertainty of estimating individual causal effects the monotonicity test is roundly failed in all 4 "defiant" datasets and worryingly high number of defiers are estimated. 
+In conclusion, the honest causal forest test also fails to reject the null hypothesis of no defiers. However, model identification of defiers leads to very different conclusions to the saturated first stage test. 
 
 # Detected Defiers 
 
-In a bid to reconcile such a large difference in test results I now turn to some simple direct comparisons between model results concerning defier identification. First, we consider defiers detected by honest causal forest followed by the saturated first stage - I use
-data from Angrist and Lavy as well as Autor, Dorn and Hanson since these papers predominantly condition on continous rather than discrete covariates.
+In a bid to reconcile such a large difference in estimated defier proportions I now turn to some simple direct comparisons between model results concerning defier identification. First, we consider defiers detected by honest causal forest followed by the saturated first stage - I use
+data from Angrist and Lavy as well as Autor, Dorn and Hanson since these papers predominantly condition on continous rather than discrete covariates. Furthermore, since we only wish to compare model identification of defiers without performing inference I avoid discretising the data to increase power and improve comparability between the models.  
 
 ## Maimonides' Defiers
 
-I plot instrument partial effects, from the saturated first stage, model on the $y$-axis against covariates on the $x$-axis; below this is a plot of heterogeneous treatment effects, estimated using honest causal forest, against covariates. Points in __black__ indicate defiers detected by __honest causal forest__.
+I plot instrument partial effects, from the saturated first stage model, on the $y$-axis against covariates on the $x$-axis; below this is a plot of heterogeneous treatment effects, estimated using honest causal forest, against covariates. Points in __black__ indicate defiers detected by __honest causal forest__.
 
 This exercise is useful for multiple reasons. Firstly, we can characterise common defier properties - for instance, the second plot suggests there are no defiers in schools with enrollment greater than 150, although admittedly there are few observations in this region. Overall, it seems that defiers are fairly evenly distributed across covariate values according to the honest causal forest.
 
@@ -2628,13 +2451,31 @@ Secondly, we can compare those identified as defiers by the causal forest with r
 ```{r partial_maim_plot, comp_plot}
 
 
+
+first_stage_interactions_maim_4_continuous <-  df_final4_cleaned %>% 
+    select(classize,
+         tipuach,
+         c_size,
+         func1) %>% 
+  run_first_stage_interactions_continuous(dataset = .,
+                                    dependent_variable = "classize",
+                                    instrument = "func1",
+                                    vcov_func = vcovCL,
+                                    cluster = df_final4_cleaned$classid,
+                                    n_tiles = 3) %>% 
+  mutate(dataset = "Fourth Grade") %>% 
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg, dataset, dydx_lo, dydx_hi, t_stat, pval_neg_holm)
+
+
+
+
 maim_4_plot <- df_final4_cleaned %>% 
   select(classize,
          tipuach,
          c_size,
          c_size_squared,
          func1) %>% 
-  bind_cols(first_stage_interactions_maim_4) %>% 
+  bind_cols(first_stage_interactions_maim_4_continuous) %>% 
   gather(key, val, classize:func1)
 maim_4_plot$prediction_rf <- tau_hat_oob_maim_4$predictions
 maim_4_plot <- maim_4_plot %>% 
@@ -2692,13 +2533,36 @@ There seems to be a larger disparity between model results in Autor, Dorn and Ha
 
 ```{r partial_ADH_plot}
 
+
+first_stage_interactions_ADH_manu_continuous <- df_china %>% 
+  select(d_sh_empl_mfg,
+         d_tradeusch_pw,
+         d_tradeotch_pw_lag,
+         l_shind_manuf_cbp,
+         starts_with("reg"),
+         l_sh_popedu_c,
+         l_sh_popfborn,
+         l_sh_empl_f,
+         l_sh_routine33,
+         l_task_outsource,
+         t2) %>% 
+  run_first_stage_interactions_continuous(dataset = .,
+                                    dependent_variable = "d_tradeusch_pw",
+                                    instrument = "d_tradeotch_pw_lag",
+                                    weights = df_china$timepwt48,
+                                    vcov_func = vcovCL,
+                                    cluster = df_china$statefip,
+                                    n_tiles = 3) %>% 
+  mutate(dataset = "ADH") %>% 
+  select(dydx_instrument, SE_dydx_instrument, pval_one_neg,  dataset, dydx_lo, dydx_hi, t_stat, pval_neg_holm)
+
 my_cols <- gg_color_hue(8)
 my_cols <- c("purple", my_cols)
 
 ADH_plot <- ADH_matrix %>% 
   as_tibble() %>% 
   select_at(vars(-contains("reg"))) %>% 
-  bind_cols(first_stage_interactions_ADH_manu) %>% 
+  bind_cols(first_stage_interactions_ADH_manu_continuous) %>% 
   gather(key,
          val,
          d_sh_empl_mfg:t2) %>% 
@@ -2734,21 +2598,22 @@ p
 q 
 ```
 
+Whilst not the central focus of this essay, identifiying defiers and those most likely to react negatively to a treatment is a crucial concern for policymakers concerned with welfare and equity. Further work, using a blend of traditional econometrics and machine learning techniques could potentially rationalise the difference in results found above. As it stands, it's difficult to ex-post rationalise defier characteristics when both tests fail to agree on defier identification.
 
 # Conclusion
 
-In this essay I've presented two methods to detect defiers in datasets of interest to economists. Power simulations show that both tests are  powerful under a range of adverse data generating specifications and in the face of model misspecification, although both tests struggle to detect non-linear, heterogeneous defiance in smaller datasets. Additional control of test size is unnecessary and only serves to limit test power in both cases.
+In this essay I've presented two methods to detect defiers in datasets of interest to economists. Simulations show that both tests are powerful and correctly sized under a range of adverse data generating specifications and in the face of model misspecification, although both tests struggle to detect non-linear, heterogeneous defiance in smaller datasets. 
 
- Simulations suggest both tests produce similar results but this isn't borne out in an empirical setting. One possible explanation is that Simpson's paradox is striking with a vengeance. Heterogeneous causal effects generated on aggregate at the observed subgroup level aren't representative of individual heterogeneous effects and the causal forest method is picking this up whereas the saturated first stage model isn't. However, I'm cautious of fully accepting the above interpretation - honest causal forest is a relatively new estimation strategy and its properties in real-world, applied settings still aren't well understood. Occam's razor would perhaps suggest that the first stage tests should be trusted most - without a doubt further exploration is required.
+Both tests produce similar results in simulations although model predictions of defier identity rarely agree.  One possible explanation is that Simpson's paradox is striking with a vengeance. Heterogeneous causal effects generated on aggregate at the observed subgroup level aren't representative of individual heterogeneous effects and the causal forest method is picking this up whereas the saturated first stage model isn't. However, I'm cautious of fully accepting the above interpretation - honest causal forest is a relatively new estimation strategy and its properties in real-world, applied settings still aren't well understood. Occam's razor would perhaps suggest that the first stage tests should be trusted most - without a doubt further exploration is required.
  
  Furthermore, two of the datasets from labour economics considered are particularly small and graphing the heterogeneous effects suggest at least one of the datasets' first stage displays non-linear properties therefore test power may be low.
 
  
- The evidence taking the tests to the data is decidedly inconclusive. On the one hand the honest causal forest based test detects defiers with a high degree of certainty and statistical signifance however this behaviour isn't replicated by the saturated first stage based test. It's hard to conclude with any reasonable degree of certainty if defiers are indeed present in the datasets in question without further research - particularly into divergences between the two tests which I fail to replicate through numerous simulations.
+Throughout the essay I've tried to present visualisations as a convenient tool to assist labour economists in detecting the presence of defiers in their own datasets. Stata's `margins` command and R's port of the command in the `margins` package make the saturated first stage test particularly easy to implement for future researchers. However, a major drawback of the tests presented here is a reliance on observed covariates - if a study only collects information on an outcome variable, the instrumented variable of interest and the instrument neither test will be appropriate.
 
- 
- Throughout the essay I've tried to present visualisations as a convenient tool to assist labour economists in detecting the presence of defiers in their own datasets. Stata's `margins` command and R's port of the command in the `margins` package make the saturated first stage test particularly easy to implement for future researchers.
 
+
+ The evidence upon taking the tests to the data is conclusive. Whilst the honest causal forest test predicts many defiers with a high degree of individual certainty, on aggregate after adjusting for multiple comparisons these defiers are no longer statistically significant. The saturated first stage method fails to reject the null hypothesis of no defiers and rarely predicts partial effect point estimates indicative of defiance.  It seems reasonable to conclude that LATE estimates by Angrist and Evans; Angrist and Lavy; and Autor, Dorn and Hanson are well identified with no evidence of defiance.
 
 # Appendix
 
