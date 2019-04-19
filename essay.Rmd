@@ -31,6 +31,17 @@ knitr::opts_chunk$set(echo = FALSE,
 ```
 
 
+Interactive Elements Currently:
+
+- Animated Size Simulations
+- Linked AE plot with DT
+- Linked brushing Detecting Defiers
+
+To Do:
+
+- Choose Standard Errors
+- Partialling out plots
+- Mechanical Gifs?
 
 
 &nbsp;
@@ -560,7 +571,7 @@ tidy_adj_p_cov %>%
     title = "Saturated First Stage Test Size Simulations"
   ) %>% 
    animation_opts(
-    1000, easing  = "quad" , redraw = FALSE
+    1000, easing  = "linear" , redraw = FALSE
   ) %>% 
     animation_slider(
     hide = TRUE
@@ -692,6 +703,87 @@ holm_adjustment_summary %>%
   scale_x_continuous(label = comma)
 ```
 
+
+```{r results="asis", fig.height=10, fig.width=10}
+
+  
+comps_to_plot <- c(seq(from = 1000, to = 10000, by = 1000),
+                   seq(from = 15000, to = 1e5, by = 5000),
+                   seq(from = 1e5, to = 1e6, by = 100000))
+
+comps_to_plot <- seq(from = 0, to = 1e6, by = 5e4)
+comps_to_plot
+rf_dens_df <- holm_adjusted_pvals %>% 
+  gather(method, pval, -n) %>% 
+  filter(n %in% comps_to_plot) %>% 
+  filter(method != "none") %>% 
+  group_by(method, n) %>% 
+  do(dens = density(.$pval)) %>% 
+  mutate(dens_x = list(dens$x),
+         dens_y = list(dens$y)) %>% 
+  unnest(dens_x, dens_y)
+  
+
+p <- rf_dens_df %>% 
+  rename(Adjustments = n) %>% 
+  plot_ly(
+    x = ~dens_x,
+    y = ~dens_y,
+    frame = ~Adjustments,
+    split = ~method,
+    type = "scatter",
+    mode = "lines",
+    fill = "tozeroy"
+  ) %>% 
+  layout(
+    xaxis = list(range = c(-0.2, 1.2)),
+    yaxis = list(range = c(0, 9)),
+    title = "P Value Density"
+  )
+
+
+q <- holm_adjustment_summary %>% 
+  filter(method != "none") %>% 
+  filter(n %in% comps_to_plot) %>% 
+  ungroup() %>% 
+  accumulate_by(~n) %>% 
+  rename(Adjustments = frame) %>% 
+  plot_ly(
+    x = ~n,
+    y = ~empirical_alpha,
+    split = ~method,
+    type = "scatter",
+    mode = "lines",
+    frame = ~Adjustments
+          )  %>% add_segments(x = 0,
+               xend = 1e6,
+               y = 0.05,
+               yend = 0.05,
+               line = list(dash = "dot"),
+               showlegend = FALSE) %>% 
+  layout(
+    xaxis = list(range = c(500, 1000000)),
+    yaxis = list(
+                 type = "log"),
+    title = "Empirical Alpha"
+  )
+  
+
+
+sub_p <- subplot(p, q, nrows = 1, shareX = FALSE, shareY = FALSE) %>% 
+  layout(title = "P-Value Density and Empirical Test Size vs Multiplicity Adjustment")
+sub_p
+```
+
+
+
+
+```{r warning=FALSE, eval = TRUE}
+htmlwidgets::saveWidget(sub_p, "RF_size.html")
+knitr::include_url("RF_size.html",height = "400px")
+```
+
+plot should be above here?
 
 &nbsp;
 
@@ -1451,6 +1543,41 @@ first_stage_interactions_AE %>%
   labs(y = "Instrument Partial Effect",
        title = "Partial Effects Ranked - Same-Sex Instrument")
 
+
+library(crosstalk)
+library(DT)
+options(persistent = TRUE)
+AE_interactive_df <- first_stage_interactions_AE %>% 
+  filter(dataset == 1990) %>%
+  sample_n(1000) %>% 
+  arrange(dydx_instrument) %>% 
+  mutate(rank = row_number()) %>% 
+  mutate(id = as.integer(factor(dataset))) %>% 
+  ungroup() %>% 
+  SharedData$new(.) 
+
+
+AE_interactive_df %>% 
+  plot_ly(
+    x = ~rank,
+    y = ~dydx_instrument
+  ) %>% 
+  add_markers() %>% 
+  highlight(color = "red",on = "plotly_click")
+
+datatable(AE_interactive_df,
+          rownames = FALSE,
+          extensions = 'Scroller', 
+          options = list(scrollY = 200,
+                         scroller = TRUE,
+                         columnDefs = list(list(className = 'dt-left',
+                                                targets = 0:3))),
+          editable = TRUE,
+          filter = 'top') %>% 
+  formatRound(c("dydx_instrument",
+                "SE_dydx_instrument",
+                "pval_one_neg"),
+                3)
 
 ```
 
@@ -2373,6 +2500,37 @@ p
 q
 
 ```
+
+
+```{r}
+library(d3scatter)
+
+shared_maim <- df_final4_cleaned %>% 
+  select(classize,
+         tipuach,
+         c_size,
+         c_size_squared,
+         func1) %>% 
+  bind_cols(first_stage_interactions_maim_4_continuous)
+
+
+shared_maim$prediction_rf <- tau_hat_oob_maim_4$predictions
+
+shared_maim <- shared_maim %>% 
+  mutate(reject_null = ifelse(prediction_rf < 0, 1, 0)) %>% 
+  sample_n(100) %>% 
+  SharedData$new(.)
+
+bscols(
+  d3scatter(shared_maim, ~classize, ~dydx_instrument, ~reject_null, width = "100%", height = 300),
+  d3scatter(shared_maim, ~tipuach, ~dydx_instrument, ~reject_null,
+            width = "100%", height = 300),
+  d3scatter(shared_maim, ~c_size, ~dydx_instrument, ~reject_null,
+            width = "100%", height = 300)
+)
+
+```
+
 
 
 
